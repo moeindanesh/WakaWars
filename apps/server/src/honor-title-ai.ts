@@ -13,6 +13,71 @@ const DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct";
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_TITLE_LENGTH = 40;
 
+/** Titles are refreshed at most once per slot — three times a day, Tehran time. */
+const TITLE_REFRESH_TIME_ZONE = "Asia/Tehran";
+const TITLE_REFRESH_SLOT_HOURS = [3, 12, 20]; // 03:00, 12:00, 20:00 Asia/Tehran
+const MINUTE_MS = 60 * 1000;
+
+const createTehranTimeFormatter = (): Intl.DateTimeFormat =>
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: TITLE_REFRESH_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+
+const getTehranMinutesOfDay = (
+  date: Date,
+  formatter: Intl.DateTimeFormat
+): number | null => {
+  const parts = formatter.formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  if (hour === undefined || minute === undefined) {
+    return null;
+  }
+  return Number(hour) * 60 + Number(minute);
+};
+
+/**
+ * The instant of the most recent refresh slot (03:00 / 12:00 / 20:00 Asia/Tehran)
+ * at or before `now`. A title generated on or after this instant means the current
+ * slot has already been served, so it should not be regenerated until the next slot.
+ * Returns null only if the timezone formatter is unavailable, in which case callers
+ * fall back to the signature-only gate. Iran observes no DST, so subtracting the
+ * elapsed wall-clock minutes from `now` yields the correct absolute instant.
+ */
+const resolveCurrentSlotStart = (now: Date): Date | null => {
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = createTehranTimeFormatter();
+  } catch {
+    return null;
+  }
+
+  const minutesNow = getTehranMinutesOfDay(now, formatter);
+  if (minutesNow === null) {
+    return null;
+  }
+
+  const slotMinutes = TITLE_REFRESH_SLOT_HOURS.map((hour) => hour * 60);
+  let activeSlot: number | null = null;
+  for (const slot of slotMinutes) {
+    if (slot <= minutesNow) {
+      activeSlot = slot;
+    }
+  }
+
+  const lastSlot = slotMinutes[slotMinutes.length - 1];
+  const elapsedMinutes =
+    activeSlot === null
+      ? minutesNow + (24 * 60 - lastSlot) // before the day's first slot → previous day's last slot
+      : minutesNow - activeSlot;
+
+  const nowMinuteStartMs = Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS;
+  return new Date(nowMinuteStartMs - elapsedMinutes * MINUTE_MS);
+};
+
 export type HonorTitleSignalAchievement = {
   id: string;
   title: string;
@@ -110,12 +175,14 @@ const requestTitle = async ({
   const systemPrompt =
     "You are the snarky title-bard of WakaWars, a coding-time leaderboard. " +
     "Given a developer's stats and the tools they actually used (languages, " +
-    "editors, projects), crown them with ONE witty, sarcastic honor title that " +
-    "lovingly roasts their coding habits. Lean on their tools when they're juicy " +
-    "(e.g. 'Vim Hostage', 'TypeScript Apologist', 'Rust Evangelist', " +
-    "'Localhost Hermit') and tease the grinders and the slackers alike. Rules: " +
-    "2 to 5 words, Title Case, playful not mean, no quotes, no emoji, no hashtags, " +
-    "no trailing punctuation, no explanation. Return only the title.";
+    "editors, projects), crown them with ONE short, dryly sarcastic honor title " +
+    "that roasts their coding habits. Keep it SIMPLE and punchy — 2 to 3 plain " +
+    "words, like 'Vim Hostage', 'Rust Cultist', 'Localhost Hermit', 'Coffee CTO', " +
+    "'Merge Gremlin', 'Idle Legend'. Lean on their tools and hours for the joke. " +
+    "Rules: NEVER use the filler words Chronic, Professional, Perpetual, Enthusiast, " +
+    "Addict, or Master. No corporate buzzwords. Title Case, playful not mean, no " +
+    "quotes, no emoji, no hashtags, no trailing punctuation, no explanation. " +
+    "Return only the title.";
 
   const userPrompt = JSON.stringify({
     previousBoringTitle: signal.deterministicTitle,
@@ -176,6 +243,8 @@ export type HonorTitleGeneratorOptions = {
   fetcher?: typeof fetch;
   weeklyRangeKey?: string;
   onError?: (error: unknown) => void;
+  /** Injectable clock, primarily for tests. Defaults to the system clock. */
+  now?: () => Date;
 };
 
 export const createHonorTitleGenerator = ({
@@ -185,6 +254,7 @@ export const createHonorTitleGenerator = ({
   fetcher = globalThis.fetch,
   weeklyRangeKey = DEFAULT_WAKATIME_WEEKLY_RANGE,
   onError,
+  now = () => new Date(),
 }: HonorTitleGeneratorOptions): HonorTitleGenerator | null => {
   const trimmedKey = apiKey?.trim();
   if (!trimmedKey) {
@@ -244,8 +314,22 @@ export const createHonorTitleGenerator = ({
         return;
       }
 
-      const signature = buildSignature(signal);
       const state = await store.getAiHonorTitleState(userId);
+
+      // Cap refreshes to three daily slots (03:00 / 12:00 / 20:00 Asia/Tehran):
+      // if a title was already generated during the current slot, leave it until
+      // the next slot. Users with no title yet are still seeded immediately.
+      const slotStart = resolveCurrentSlotStart(now());
+      if (
+        slotStart &&
+        state?.title &&
+        state.generatedAt &&
+        state.generatedAt.getTime() >= slotStart.getTime()
+      ) {
+        return;
+      }
+
+      const signature = buildSignature(signal);
       if (state?.signature === signature && state.title) {
         return;
       }
@@ -274,4 +358,8 @@ export const createHonorTitleGenerator = ({
   return { maybeGenerate };
 };
 
-export const __testing = { buildSignature, sanitizeTitle };
+export const __testing = {
+  buildSignature,
+  sanitizeTitle,
+  resolveCurrentSlotStart,
+};

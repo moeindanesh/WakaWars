@@ -4,7 +4,7 @@ import {
   __testing,
 } from "../src/honor-title-ai.js";
 
-const { buildSignature, sanitizeTitle } = __testing;
+const { buildSignature, sanitizeTitle, resolveCurrentSlotStart } = __testing;
 
 const baseSignal = {
   username: "mo",
@@ -97,6 +97,27 @@ describe("honor-title-ai sanitizeTitle", () => {
   });
 });
 
+describe("honor-title-ai resolveCurrentSlotStart", () => {
+  // Asia/Tehran is UTC+03:30 (no DST). Slots: 03:00, 12:00, 20:00 local.
+  const tehranSlotUtc = (utcIso: string) =>
+    resolveCurrentSlotStart(new Date(utcIso))?.toISOString();
+
+  it("maps a time after the 12:00 slot back to 12:00 Tehran (08:30 UTC)", () => {
+    // 2026-06-26 14:00 Tehran == 10:30 UTC → most recent slot is 12:00 Tehran == 08:30 UTC
+    expect(tehranSlotUtc("2026-06-26T10:30:00Z")).toBe("2026-06-26T08:30:00.000Z");
+  });
+
+  it("maps a time after the 20:00 slot back to 20:00 Tehran (16:30 UTC)", () => {
+    // 2026-06-26 22:00 Tehran == 18:30 UTC → slot 20:00 Tehran == 16:30 UTC
+    expect(tehranSlotUtc("2026-06-26T18:30:00Z")).toBe("2026-06-26T16:30:00.000Z");
+  });
+
+  it("before the day's first slot, falls back to the previous day's 20:00 slot", () => {
+    // 2026-06-26 02:00 Tehran == 2026-06-25 22:30 UTC → slot 20:00 Tehran (prev day) == 2026-06-25 16:30 UTC
+    expect(tehranSlotUtc("2026-06-25T22:30:00Z")).toBe("2026-06-25T16:30:00.000Z");
+  });
+});
+
 describe("createHonorTitleGenerator", () => {
   it("returns null when no API key is configured (deterministic fallback stays)", () => {
     const generator = createHonorTitleGenerator({
@@ -104,5 +125,71 @@ describe("createHonorTitleGenerator", () => {
       apiKey: "",
     });
     expect(generator).toBeNull();
+  });
+
+  const makeStore = (state: {
+    title: string | null;
+    signature: string | null;
+    generatedAt: Date | null;
+  }) => {
+    const sets: unknown[] = [];
+    const store = {
+      getUserById: async () => ({ id: 1, wakawarsUsername: "mo" }),
+      listAchievementUnlocks: async () => [],
+      listAchievementGrants: async () => [],
+      getWeeklyStats: async () => [{ totalSeconds: 0, dailyAverageSeconds: 0 }],
+      getAiHonorTitleState: async () => state,
+      setAiHonorTitle: async (input: unknown) => {
+        sets.push(input);
+      },
+    } as never;
+    return { store, sets };
+  };
+
+  it("skips generation when a title already exists for the current slot", async () => {
+    const { store, sets } = makeStore({
+      title: "Vim Hostage",
+      signature: "old",
+      // generated at 13:00 Tehran, same slot as the 14:00 Tehran "now"
+      generatedAt: new Date("2026-06-26T09:30:00Z"),
+    });
+    let fetched = false;
+    const generator = createHonorTitleGenerator({
+      store,
+      apiKey: "key",
+      fetcher: (async () => {
+        fetched = true;
+        return new Response("{}");
+      }) as never,
+      now: () => new Date("2026-06-26T10:30:00Z"), // 14:00 Tehran
+    });
+
+    await generator?.maybeGenerate({ userId: 1, todaySeconds: 3600 });
+    expect(fetched).toBe(false);
+    expect(sets).toHaveLength(0);
+  });
+
+  it("regenerates once the next slot opens", async () => {
+    const { store, sets } = makeStore({
+      title: "Vim Hostage",
+      signature: "old",
+      // generated in the 12:00 slot…
+      generatedAt: new Date("2026-06-26T09:30:00Z"),
+    });
+    const generator = createHonorTitleGenerator({
+      store,
+      apiKey: "key",
+      fetcher: (async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Localhost Hermit" } }],
+          })
+        )) as never,
+      // …now it's 21:00 Tehran, the 20:00 slot is open
+      now: () => new Date("2026-06-26T17:30:00Z"),
+    });
+
+    await generator?.maybeGenerate({ userId: 1, todaySeconds: 3600 });
+    expect(sets).toHaveLength(1);
   });
 });
