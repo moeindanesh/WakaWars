@@ -8,7 +8,7 @@ export const HONOR_TITLE_ACHIEVEMENT_IDS = ACHIEVEMENT_DEFINITIONS.map(
   (achievement) => achievement.id
 );
 
-const TITLE_BY_ACHIEVEMENT_ID: Record<string, string> = {
+export const TITLE_BY_ACHIEVEMENT_ID: Record<string, string> = {
   "quick-boot-4h": "Daybreak Sprinter",
   "focus-reactor-6h": "Focus Reactor",
   "streak-forge-8h": "Green Wall Initiate",

@@ -333,6 +333,21 @@ const extractActiveNamedEntryValues = (
   }));
 };
 
+/**
+ * The most-used distinct names for a breakdown (languages, editors, projects),
+ * highest total time first. Used to flavor AI honor titles with the tools a user
+ * actually leaned on, rather than just their raw hours.
+ */
+export const extractTopEntryNames = (
+  payload: unknown,
+  key: string,
+  limit: number
+): string[] =>
+  extractActiveNamedEntryValues(payload, key)
+    .sort((a, b) => b.seconds - a.seconds)
+    .slice(0, Math.max(0, limit))
+    .map((entry) => entry.name);
+
 const extractActiveEditors = (payload?: unknown): string[] => {
   if (!payload) {
     return [];

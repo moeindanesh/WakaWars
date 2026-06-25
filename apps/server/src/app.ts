@@ -39,6 +39,8 @@ import {
   HONOR_TITLE_ACHIEVEMENT_IDS,
   resolveHonorTitlesByUserId,
 } from "./honor-titles.js";
+import { createHonorTitleGenerator } from "./honor-title-ai.js";
+import { createProviderLogCleanup } from "./provider-log-cleanup.js";
 
 export type ServerOptions = {
   port: number;
@@ -52,7 +54,13 @@ export type ServerOptions = {
   enableWeeklyCache?: boolean;
   weeklyCacheIntervalMs?: number;
   weeklyRangeKey?: string;
+  openRouterApiKey?: string | null;
+  openRouterModel?: string;
+  providerLogRetentionDays?: number;
 };
+
+const DEFAULT_PROVIDER_LOG_RETENTION_DAYS = 14;
+const MAX_HISTORY_DAYS = 14;
 
 const toPublicConfig = (config: UserConfig): PublicConfig => ({
   wakawarsUsername: config.wakawarsUsername,
@@ -103,6 +111,9 @@ export const createServer = ({
   enableWeeklyCache,
   weeklyCacheIntervalMs,
   weeklyRangeKey,
+  openRouterApiKey,
+  openRouterModel,
+  providerLogRetentionDays,
 }: ServerOptions) => {
   const prisma = repository ? null : createPrismaClient(databaseUrl);
   const store = repository ?? createPrismaRepository(prisma!);
@@ -111,12 +122,30 @@ export const createServer = ({
     sessionStore ??
     (prisma ? createPrismaSessionStore(prisma) : createMemorySessionStore());
   const rangeKey = weeklyRangeKey ?? DEFAULT_WAKATIME_WEEKLY_RANGE;
+  const honorTitleGenerator = createHonorTitleGenerator({
+    store,
+    apiKey: openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? null,
+    model: openRouterModel ?? process.env.OPENROUTER_MODEL,
+    fetcher,
+    weeklyRangeKey: rangeKey,
+  });
   const statusSync = createWakaTimeSync({
     store,
     wakatime,
     intervalMs: statusSyncIntervalMs ?? DEFAULT_WAKATIME_SYNC_INTERVAL_MS,
+    honorTitle: honorTitleGenerator,
   });
   const shouldSync = enableStatusSync ?? true;
+  const retentionFromEnv = Number(process.env.PROVIDER_LOG_RETENTION_DAYS);
+  const resolvedRetentionDays =
+    providerLogRetentionDays ??
+    (Number.isFinite(retentionFromEnv) && retentionFromEnv > 0
+      ? retentionFromEnv
+      : DEFAULT_PROVIDER_LOG_RETENTION_DAYS);
+  const providerLogCleanup = createProviderLogCleanup({
+    store,
+    retentionDays: resolvedRetentionDays,
+  });
   const weeklyCache = createWakaTimeWeeklyCache({
     store,
     wakatime,
@@ -160,15 +189,30 @@ export const createServer = ({
   };
 
   const resolveHonorTitles = async (userIds: number[]) => {
-    const grants = await store.listAchievementGrants({
-      userIds,
-      achievementIds: HONOR_TITLE_ACHIEVEMENT_IDS,
-    });
+    const [aiTitles, grants] = await Promise.all([
+      store.getAiHonorTitles(userIds),
+      store.listAchievementGrants({
+        userIds,
+        achievementIds: HONOR_TITLE_ACHIEVEMENT_IDS,
+      }),
+    ]);
 
-    return resolveHonorTitlesByUserId({
+    const deterministic = resolveHonorTitlesByUserId({
       userIds,
       grants,
     });
+
+    // Prefer the cached AI title; fall back to the deterministic title when the
+    // user has no generated title yet (or the AI provider is not configured).
+    return new Map(
+      userIds.map((id) => {
+        const aiTitle = aiTitles.get(id);
+        return [
+          id,
+          aiTitle && aiTitle.trim() ? aiTitle : deterministic.get(id) ?? null,
+        ] as const;
+      })
+    );
   };
 
   const buildDailyLeaderboard = async (config: UserConfig, offsetDays: number) => {
@@ -230,10 +274,7 @@ export const createServer = ({
           username: user.wakawarsUsername,
           honorTitle: null,
           totalSeconds: 0,
-          status: "private",
-          coinBalance: user.coinBalance ?? 0,
-          equippedSkinId: user.equippedSkinId ?? null,
-          error: null,
+          status: "private",          error: null,
         };
       }
       if (!stat) {
@@ -241,10 +282,7 @@ export const createServer = ({
           username: user.wakawarsUsername,
           honorTitle,
           totalSeconds: 0,
-          status: "error",
-          coinBalance: user.coinBalance ?? 0,
-          equippedSkinId: user.equippedSkinId ?? null,
-          error: "No stats synced yet",
+          status: "error",          error: "No stats synced yet",
         };
       }
 
@@ -253,8 +291,6 @@ export const createServer = ({
         honorTitle,
         totalSeconds: stat.totalSeconds,
         status: stat.status,
-        coinBalance: user.coinBalance ?? 0,
-        equippedSkinId: user.equippedSkinId ?? null,
         error: stat.error ?? null,
       };
     };
@@ -1168,8 +1204,42 @@ export const createServer = ({
             return { error: "App is not configured" };
           }
 
-          return buildDailyHistory(config, 7);
+          return buildDailyHistory(config, MAX_HISTORY_DAYS);
         })
+        .get(
+          "/stats/day",
+          async ({ set, headers, query }) => {
+            const authCheck = await requireSession(headers, set);
+            if (!authCheck.ok) {
+              return { error: "Unauthorized" };
+            }
+
+            const config = await store.getUserById(authCheck.user.id);
+            if (!config) {
+              set.status = 401;
+              return { error: "Unauthorized" };
+            }
+
+            if (!config.wakawarsUsername || !config.apiKey) {
+              set.status = 400;
+              return { error: "App is not configured" };
+            }
+
+            const rawOffset = Number(query.offset ?? "0");
+            const offset = Number.isFinite(rawOffset) ? Math.trunc(rawOffset) : 0;
+            const boundedOffset = Math.min(
+              0,
+              Math.max(-MAX_HISTORY_DAYS, offset)
+            );
+
+            return buildDailyLeaderboard(config, boundedOffset);
+          },
+          {
+            query: t.Object({
+              offset: t.Optional(t.String()),
+            }),
+          }
+        )
         .post("/stats/refresh", async ({ set, headers }) => {
           const authCheck = await requireSession(headers, set);
           if (!authCheck.ok) {
@@ -1225,10 +1295,45 @@ export const createServer = ({
             .filter((user): user is NonNullable<typeof user> => Boolean(user));
           const honorTitlesByUserId = await resolveHonorTitles(userIds);
 
-          const weeklyStats = weeklyCache.getStats({ userIds, rangeKey });
-          const statsByUserId = new Map(
-            weeklyStats.map((stat) => [stat.userId, stat.result])
+          type WeeklyStatView = {
+            totalSeconds: number;
+            dailyAverageSeconds: number;
+            status: WeeklyStat["status"];
+            error: string | null;
+            fetchedAt: number;
+          };
+          const cachedStats = weeklyCache.getStats({ userIds, rangeKey });
+          const statsByUserId = new Map<number, WeeklyStatView>(
+            cachedStats.map((stat) => [
+              stat.userId,
+              {
+                totalSeconds: stat.result.totalSeconds,
+                dailyAverageSeconds: stat.result.dailyAverageSeconds,
+                status: stat.result.status,
+                error: stat.result.error ?? null,
+                fetchedAt: stat.result.fetchedAt,
+              },
+            ])
           );
+          // Restart-safety: the weekly cache is in-memory, so on a cold start it
+          // is empty. Fall back to the persisted weekly stats for any user the
+          // cache has not yet refreshed (mirrors the daily board).
+          const missingWeeklyIds = userIds.filter((id) => !statsByUserId.has(id));
+          if (missingWeeklyIds.length > 0) {
+            const persisted = await store.getWeeklyStats({
+              userIds: missingWeeklyIds,
+              rangeKey,
+            });
+            persisted.forEach((stat) => {
+              statsByUserId.set(stat.userId, {
+                totalSeconds: stat.totalSeconds,
+                dailyAverageSeconds: stat.dailyAverageSeconds,
+                status: stat.status,
+                error: stat.error,
+                fetchedAt: stat.fetchedAt.getTime(),
+              });
+            });
+          }
           const incomingFriendIds = new Set(
             await store.getIncomingFriendIds(config.id, userIds)
           );
@@ -1252,10 +1357,7 @@ export const createServer = ({
                 honorTitle: null,
                 totalSeconds: 0,
                 dailyAverageSeconds: 0,
-                status: "private",
-                coinBalance: user.coinBalance ?? 0,
-                equippedSkinId: user.equippedSkinId ?? null,
-                error: null,
+                status: "private",                error: null,
               };
             }
             if (!stat) {
@@ -1264,10 +1366,7 @@ export const createServer = ({
                 honorTitle,
                 totalSeconds: 0,
                 dailyAverageSeconds: 0,
-                status: "error",
-                coinBalance: user.coinBalance ?? 0,
-                equippedSkinId: user.equippedSkinId ?? null,
-                error: "No stats synced yet",
+                status: "error",                error: "No stats synced yet",
               };
             }
 
@@ -1277,8 +1376,6 @@ export const createServer = ({
               totalSeconds: stat.totalSeconds,
               dailyAverageSeconds: stat.dailyAverageSeconds,
               status: stat.status,
-              coinBalance: user.coinBalance ?? 0,
-              equippedSkinId: user.equippedSkinId ?? null,
               error: stat.error ?? null,
             };
           };
@@ -1310,8 +1407,11 @@ export const createServer = ({
                   deltaSeconds: 0,
                 }
               : null);
-          const updatedAtEpoch = weeklyStats.length
-            ? Math.max(...weeklyStats.map((stat) => stat.result.fetchedAt))
+          const weeklyFetchedAts = Array.from(statsByUserId.values()).map(
+            (stat) => stat.fetchedAt
+          );
+          const updatedAtEpoch = weeklyFetchedAts.length
+            ? Math.max(...weeklyFetchedAts)
             : Date.now();
 
           const response: WeeklyLeaderboardResponse = {
@@ -1329,6 +1429,7 @@ export const createServer = ({
     app.listen({ port, hostname });
     if (shouldSync) {
       statusSync.start();
+      providerLogCleanup.start();
     }
     if (shouldCacheWeekly) {
       weeklyCache.start();
@@ -1348,6 +1449,7 @@ export const createServer = ({
     }
     statusSync.stop();
     weeklyCache.stop();
+    providerLogCleanup.stop();
     await disconnect();
   };
 

@@ -11,8 +11,13 @@ WakaWars is a local-first coding leaderboard for friends, built as a macOS menu 
 - Tracks daily and weekly coding time using WakaTime.
 - Ranks you against friends (and group members) with competitive leaderboard views.
 - Supports private/friends/public visibility controls.
-- Includes achievements, honor titles, coins, and a skin shop.
+- Shows an AI-generated honor title next to each player (OpenRouter), with a deterministic fallback.
+- Lets you browse previous days' full leaderboards in a History view.
 - Runs as a tray-first app on macOS with auto-update support.
+
+> Achievements, coins, and the skin shop remain in the database and on the server
+> but are no longer surfaced in the UI. Achievements are still awarded during sync
+> because they feed the honor-title signal.
 
 ## Monorepo Layout
 
@@ -31,7 +36,8 @@ packages/
 - API: Elysia (`/wakawars/v0`)
 - DB: PostgreSQL + Prisma
 - Desktop: Electron + `electron-builder` + `electron-updater`
-- UI: React + Vite + Framer Motion
+- UI: React + Vite
+- AI: OpenRouter (honor titles), generated in the background sync and cached in the database
 
 ## Local Development
 
@@ -47,7 +53,12 @@ bun install
 cp apps/server/.env.example apps/server/.env
 ```
 
-`apps/server/.env` needs a PostgreSQL `DATABASE_URL`.
+`apps/server/.env` needs a PostgreSQL `DATABASE_URL`. Optional:
+
+- `OPENROUTER_API_KEY` enables AI honor titles (unset → deterministic fallback).
+- `OPENROUTER_MODEL` overrides the default cheap model.
+- `PROVIDER_LOG_RETENTION_DAYS` (default `14`) bounds the `ww_provider_log` table; a
+  daily job deletes older rows, and only failed/anomalous provider responses are logged.
 
 ### 3) Run migrations
 
@@ -103,11 +114,12 @@ Base path: `/wakawars/v0`
 
 - `GET /stats/today`
 - `GET /stats/yesterday`
-- `GET /stats/history`
+- `GET /stats/history` (last 14 days, podium preview)
+- `GET /stats/day?offset=-N` (full board for a past day, History view)
 - `POST /stats/refresh`
 - `GET /stats/weekly`
-- `GET /achievements`
-- `GET /achievements/:username`
+- `GET /achievements` (server-side; not shown in the UI)
+- `GET /achievements/:username` (server-side; not shown in the UI)
 
 ### Economy
 

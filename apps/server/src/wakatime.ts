@@ -47,7 +47,10 @@ type CacheEntry<T> = {
   result: T;
 };
 
-const DEFAULT_TTL_MS = 2 * 60 * 1000;
+// Kept strictly below the 2-minute sync interval so a cached entry is reliably
+// expired by the next sync cycle; otherwise a cycle could read from cache and
+// skip persisting fresh stats.
+const DEFAULT_TTL_MS = 90 * 1000;
 
 export const createWakaTimeClient = ({
   fetcher = globalThis.fetch,

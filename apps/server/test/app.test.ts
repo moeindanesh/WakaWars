@@ -592,7 +592,12 @@ const createMemoryRepository = (): UserRepository => {
           contextKey: entry.contextKey,
           awardedAt: entry.awardedAt
         })),
-    createProviderLog: async () => {}
+    createProviderLog: async () => {},
+    deleteProviderLogsOlderThan: async () => 0,
+    getAiHonorTitles: async (userIds) =>
+      new Map(userIds.map((id) => [id, null])),
+    getAiHonorTitleState: async () => null,
+    setAiHonorTitle: async () => {}
   };
 };
 
@@ -938,7 +943,7 @@ describe("server app", () => {
       days: Array<{ offsetDays: number; podium: Array<{ username: string }> }>;
     };
 
-    expect(historyPayload.days).toHaveLength(7);
+    expect(historyPayload.days).toHaveLength(14);
     expect(historyPayload.days[0]?.offsetDays).toBe(1);
     expect(historyPayload.days[0]?.podium.map((entry) => entry.username)).toEqual([
       "amy",
@@ -1619,7 +1624,7 @@ describe("server app", () => {
     expect(privateEntry?.status).toBe("private");
   });
 
-  it("buys and equips a skin, then returns it on leaderboard entries", async () => {
+  it("buys and equips a skin, but no longer exposes it on leaderboard entries", async () => {
     const repository = createMemoryRepository();
     const { app, store } = createServer({
       port: 0,
@@ -1719,10 +1724,12 @@ describe("server app", () => {
       entries: Array<{ username: string; equippedSkinId?: string | null }>;
     };
     const moEntry = statsPayload.entries.find((entry) => entry.username === "mo");
-    expect(moEntry?.equippedSkinId).toBe("ember");
+    // Economy is frozen in the UI: skins are still purchasable/equippable on the
+    // server but are no longer surfaced on leaderboard entries.
+    expect(moEntry?.equippedSkinId).toBeUndefined();
   });
 
-  it("settles yesterday rewards once with 3/2/1 coins", async () => {
+  it("does not settle daily rewards during sync (economy frozen)", async () => {
     const repository = createMemoryRepository();
     const fetcher: typeof fetch = async () =>
       new Response(
@@ -1856,21 +1863,14 @@ describe("server app", () => {
 
     await statusSync.runOnce();
 
-    const moWalletAfterFirst = await store.getWallet({ userId: mo!.id, limit: 10 });
-    const amyWalletAfterFirst = await store.getWallet({ userId: amy!.id, limit: 10 });
-    const benWalletAfterFirst = await store.getWallet({ userId: ben!.id, limit: 10 });
-    expect(moWalletAfterFirst?.coinBalance).toBe(2);
-    expect(amyWalletAfterFirst?.coinBalance).toBe(3);
-    expect(benWalletAfterFirst?.coinBalance).toBe(1);
-
-    await statusSync.runOnce();
-
-    const moWalletAfterSecond = await store.getWallet({ userId: mo!.id, limit: 10 });
-    const amyWalletAfterSecond = await store.getWallet({ userId: amy!.id, limit: 10 });
-    const benWalletAfterSecond = await store.getWallet({ userId: ben!.id, limit: 10 });
-    expect(moWalletAfterSecond?.coinBalance).toBe(2);
-    expect(amyWalletAfterSecond?.coinBalance).toBe(3);
-    expect(benWalletAfterSecond?.coinBalance).toBe(1);
+    // Economy is frozen: the sync no longer settles daily rank rewards, so no
+    // coins are awarded even though yesterday's leaderboard is fully populated.
+    const moWallet = await store.getWallet({ userId: mo!.id, limit: 10 });
+    const amyWallet = await store.getWallet({ userId: amy!.id, limit: 10 });
+    const benWallet = await store.getWallet({ userId: ben!.id, limit: 10 });
+    expect(moWallet?.coinBalance).toBe(0);
+    expect(amyWallet?.coinBalance).toBe(0);
+    expect(benWallet?.coinBalance).toBe(0);
   });
 
   it("returns aggregated achievements with repeat counts", async () => {
@@ -2191,5 +2191,102 @@ describe("server app", () => {
 
     expect(achievementIds).toContain("weekend-warrior-8h");
     expect(achievementIds).toContain("weekend-overdrive-12h");
+  });
+
+  it("serves weekly stats from the database when the in-memory cache is cold", async () => {
+    const repository = createMemoryRepository();
+    const { app, store } = createServer({
+      port: 0,
+      repository,
+      enableStatusSync: false,
+      enableWeeklyCache: false,
+    });
+
+    const { sessionId } = await getSessionId(
+      await app.handle(
+        new Request("http://localhost/wakawars/v0/config", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ wakawarsUsername: "mo", apiKey: "key-mo" }),
+        })
+      )
+    );
+
+    const mo = await store.getUserByUsername("mo");
+    await store.upsertWeeklyStat({
+      userId: mo!.id,
+      rangeKey: "last_7_days",
+      totalSeconds: 12345,
+      dailyAverageSeconds: 1763,
+      status: "ok",
+      error: null,
+      fetchedAt: new Date(),
+    });
+
+    const response = await app.handle(
+      new Request("http://localhost/wakawars/v0/stats/weekly", {
+        headers: { "x-wakawars-session": sessionId ?? "" },
+      })
+    );
+    const payload = (await response.json()) as {
+      entries: Array<{ username: string; totalSeconds: number }>;
+    };
+    const moEntry = payload.entries.find((entry) => entry.username === "mo");
+    expect(moEntry?.totalSeconds).toBe(12345);
+  });
+
+  it("returns a past day's full board via /stats/day", async () => {
+    const repository = createMemoryRepository();
+    const { app, store } = createServer({
+      port: 0,
+      repository,
+      enableStatusSync: false,
+      enableWeeklyCache: false,
+    });
+
+    const { sessionId } = await getSessionId(
+      await app.handle(
+        new Request("http://localhost/wakawars/v0/config", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ wakawarsUsername: "mo", apiKey: "key-mo" }),
+        })
+      )
+    );
+
+    const mo = await store.getUserByUsername("mo");
+    const now = new Date();
+    const todayKey = now.toISOString().slice(0, 10);
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+
+    await store.upsertDailyStat({
+      userId: mo!.id,
+      dateKey: todayKey,
+      totalSeconds: 1000,
+      status: "ok",
+      error: null,
+      fetchedAt: now,
+    });
+    await store.upsertDailyStat({
+      userId: mo!.id,
+      dateKey: yesterdayKey,
+      totalSeconds: 7777,
+      status: "ok",
+      error: null,
+      fetchedAt: now,
+    });
+
+    const response = await app.handle(
+      new Request("http://localhost/wakawars/v0/stats/day?offset=-1", {
+        headers: { "x-wakawars-session": sessionId ?? "" },
+      })
+    );
+    const payload = (await response.json()) as {
+      date: string;
+      entries: Array<{ username: string; totalSeconds: number }>;
+    };
+    expect(payload.date).toBe(yesterdayKey);
+    const moEntry = payload.entries.find((entry) => entry.username === "mo");
+    expect(moEntry?.totalSeconds).toBe(7777);
   });
 });

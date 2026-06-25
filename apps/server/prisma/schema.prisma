@@ -17,6 +17,9 @@ model ww_user {
   is_competing      Boolean         @default(true)
   coin_balance      Int             @default(0)
   equipped_skin_id  String?
+  ai_honor_title              String?
+  ai_honor_title_signature    String?
+  ai_honor_title_generated_at DateTime?
   equipped_skin     ww_skin_catalog? @relation("equipped_skin", fields: [equipped_skin_id], references: [id], onDelete: SetNull)
   friendships       ww_friendship[] @relation("user_friendships")
   friend_of         ww_friendship[] @relation("friend_friendships")
@@ -222,4 +225,5 @@ model ww_provider_log {
   @@index([provider])
   @@index([user_id])
   @@index([endpoint])
+  @@index([fetched_at])
 }

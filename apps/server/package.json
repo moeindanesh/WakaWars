@@ -11,6 +11,7 @@
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "start": "node dist/cli.js",
     "backfill:achievements": "tsx src/scripts/backfill-achievements.ts",
+    "backfill:leaderboard": "tsx src/scripts/backfill-leaderboard.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "seed:skins": "tsx scripts/seed-skins.ts",

@@ -5,11 +5,9 @@ import {
   useState,
   useRef,
   type ComponentPropsWithoutRef,
-  type KeyboardEvent as ReactKeyboardEvent,
   type CSSProperties,
   type FormEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 import {
   formatDuration,
@@ -19,9 +17,6 @@ import {
   type LeaderboardEntry,
   type LeaderboardResponse,
   type PublicConfig,
-  type ShopCatalogResponse,
-  type SkinId,
-  type WalletResponse,
   type WeeklyLeaderboardEntry,
   type WeeklyLeaderboardResponse,
 } from "@molty/shared";
@@ -46,74 +41,7 @@ type VersionPayload = {
   buildTime?: string;
 };
 
-type UserAchievement = {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  count: number;
-  firstAwardedAt: string;
-  lastAwardedAt: string;
-};
-
-type UserAchievementsPayload = {
-  username: string;
-  totalUnlocks: number;
-  achievements: UserAchievement[];
-};
-
-type AchievementCatalogItem = {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  count: number;
-  unlocked: boolean;
-  firstAwardedAt: string | null;
-  lastAwardedAt: string | null;
-};
-
-type AchievementCatalogPayload = {
-  username: string;
-  totalUnlocks: number;
-  unlockedCount: number;
-  totalDefined: number;
-  achievements: AchievementCatalogItem[];
-};
-
-type AchievementRarity = "common" | "rare" | "epic" | "legendary";
-
-const COMMON_ACHIEVEMENT_IDS = new Set([
-  "quick-boot-4h",
-  "focus-reactor-6h",
-  "weekend-warrior-8h",
-  "workweek-warrior-40h",
-  "seven-sunrise-week",
-]);
-
-const EPIC_ACHIEVEMENT_IDS = new Set([
-  "merge-mountain-12h",
-  "night-shift-14h",
-  "green-wall-80h",
-  "project-monolith-80h",
-]);
-
-const LEGENDARY_ACHIEVEMENT_IDS = new Set([
-  "legendary-commit-16h",
-  "boss-raid-20h",
-  "graph-overflow-100h",
-  "matrix-120h",
-  "ultra-pace-10h",
-]);
-
-const getAchievementRarity = (achievementId: string): AchievementRarity => {
-  if (LEGENDARY_ACHIEVEMENT_IDS.has(achievementId)) return "legendary";
-  if (EPIC_ACHIEVEMENT_IDS.has(achievementId)) return "epic";
-  if (COMMON_ACHIEVEMENT_IDS.has(achievementId)) return "common";
-  return "rare";
-};
-
-const AchievementHeaderIcon = () => (
+const HistoryHeaderIcon = () => (
   <svg
     aria-hidden="true"
     focusable="false"
@@ -126,12 +54,9 @@ const AchievementHeaderIcon = () => (
     strokeLinecap="round"
     strokeLinejoin="round"
   >
-    <path d="M8 4h8v2a4 4 0 0 1-8 0V4Z" />
-    <path d="M8 5H5a3 3 0 0 0 3 3" />
-    <path d="M16 5h3a3 3 0 0 1-3 3" />
-    <path d="M12 10v3" />
-    <path d="M9.5 16h5" />
-    <path d="M8.5 19h7" />
+    <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" />
+    <path d="M5 3v4h4" />
+    <path d="M12 8v4.5l3 1.8" />
   </svg>
 );
 
@@ -151,6 +76,63 @@ const HomeHeaderIcon = () => (
     <path d="M3 11.5 12 4l9 7.5" />
     <path d="M6.5 10.5V20h11v-9.5" />
     <path d="M10 20v-5h4v5" />
+  </svg>
+);
+
+const RefreshHeaderIcon = () => (
+  <svg
+    aria-hidden="true"
+    focusable="false"
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6" />
+    <path d="M20.5 4.5V10H15" />
+  </svg>
+);
+
+const SettingsGearIcon = () => (
+  <svg
+    aria-hidden="true"
+    focusable="false"
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+const CompetitionFlagIcon = ({ competing }: { competing: boolean }) => (
+  <svg
+    aria-hidden="true"
+    focusable="false"
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M6 21V4" />
+    <path
+      d="M6 4.5h10.5l-2 3.3 2 3.3H6z"
+      fill={competing ? "currentColor" : "none"}
+    />
   </svg>
 );
 
@@ -203,44 +185,6 @@ const Button = ({
     </button>
   );
 };
-const ShopHeaderIcon = () => (
-  <svg
-    aria-hidden="true"
-    focusable="false"
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M6.5 8h11l-1 11h-9l-1-11Z" />
-    <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
-  </svg>
-);
-
-const CoinIcon = () => (
-  <svg
-    aria-hidden="true"
-    focusable="false"
-    viewBox="0 0 24 24"
-    className="coin-icon"
-  >
-    <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.18" />
-    <circle
-      cx="12"
-      cy="12"
-      r="7.2"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-    />
-    <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="1.5" />
-  </svg>
-);
-
 type AddFriendCardProps = {
   docked?: boolean;
   dismissible?: boolean;
@@ -343,7 +287,7 @@ const App = () => {
     Record<number, string>
   >({});
   const [activeTab, setActiveTab] = useState<
-    "league" | "shop" | "achievements" | "settings"
+    "league" | "settings" | "history"
   >("league");
   const [activeLeagueTab, setActiveLeagueTab] = useState<"today" | "weekly">(
     "today"
@@ -392,29 +336,13 @@ const App = () => {
     if (stored === "false") return false;
     return true;
   });
-  const [hoveredUsername, setHoveredUsername] = useState<string | null>(null);
-  const [userAchievements, setUserAchievements] = useState<
-    Record<
-      string,
-      { loading: boolean; data: UserAchievementsPayload | null; error: string | null }
-    >
-  >({});
-  const [achievementCatalog, setAchievementCatalog] =
-    useState<AchievementCatalogPayload | null>(null);
-  const [achievementCatalogLoading, setAchievementCatalogLoading] =
-    useState(false);
-  const [achievementCatalogError, setAchievementCatalogError] = useState<
-    string | null
+  const [selectedHistoryOffset, setSelectedHistoryOffset] = useState<
+    number | null
   >(null);
-  const [wallet, setWallet] = useState<WalletResponse | null>(null);
-  const [shopCatalog, setShopCatalog] = useState<ShopCatalogResponse | null>(
-    null
-  );
-  const [shopLoading, setShopLoading] = useState(false);
-  const [shopError, setShopError] = useState<string | null>(null);
-  const [shopPendingSkinId, setShopPendingSkinId] = useState<SkinId | null>(
-    null
-  );
+  const [historyDayBoard, setHistoryDayBoard] =
+    useState<LeaderboardResponse | null>(null);
+  const [historyDayLoading, setHistoryDayLoading] = useState(false);
+  const [historyDayError, setHistoryDayError] = useState<string | null>(null);
 
   const isAuthenticated = Boolean(session?.authenticated);
   const isConfigured = Boolean(config?.wakawarsUsername && config?.hasApiKey);
@@ -430,7 +358,6 @@ const App = () => {
   const competitionRequestAbortRef = useRef<AbortController | null>(null);
   const competitionDebounceRef = useRef<number | null>(null);
   const competitionRequestIdRef = useRef(0);
-  const achievementsModalRef = useRef<HTMLElement | null>(null);
   const competitionRollbackRef = useRef<{
     previousConfig: PublicConfig | null;
     previousStats: LeaderboardResponse | null;
@@ -988,26 +915,6 @@ const App = () => {
     }
   };
 
-  const handleRemoveFriend = async (username: string) => {
-    if (!username) return;
-    setLoading(true);
-    try {
-      const payload = await request<PublicConfig>(
-        `/friends/${encodeURIComponent(username)}`,
-        {
-          method: "DELETE",
-        }
-      );
-      setConfig(payload);
-      setError(null);
-      await loadStats({ silent: true, includeWeekly: shouldIncludeWeekly });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove friend");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateGroup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = groupNameInput.trim();
@@ -1096,28 +1003,6 @@ const App = () => {
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to remove group member"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVisibilityChange = async (
-    value: PublicConfig["statsVisibility"]
-  ) => {
-    if (!config || config.statsVisibility === value) return;
-
-    setLoading(true);
-    try {
-      const payload = await request<PublicConfig>("/visibility", {
-        method: "POST",
-        body: JSON.stringify({ visibility: value }),
-      });
-      setConfig(payload);
-      setError(null);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to update visibility"
       );
     } finally {
       setLoading(false);
@@ -1296,234 +1181,42 @@ const App = () => {
     shouldIncludeWeekly,
   ]);
 
-  const loadAchievementCatalog = useCallback(
-    async (force = false) => {
-      if (!isAuthenticated || !isConfigured) return;
-      if (achievementCatalogLoading) return;
-      if (achievementCatalog && !force) return;
-
-      setAchievementCatalogLoading(true);
-      setAchievementCatalogError(null);
+  const loadHistoryDay = useCallback(
+    async (offsetDays: number) => {
+      setSelectedHistoryOffset(offsetDays);
+      setHistoryDayLoading(true);
+      setHistoryDayError(null);
       try {
-        const payload = await request<AchievementCatalogPayload>("/achievements");
-        setAchievementCatalog(payload);
+        const payload = await request<LeaderboardResponse>(
+          `/stats/day?offset=-${offsetDays}`
+        );
+        setHistoryDayBoard(payload);
       } catch (err) {
-        setAchievementCatalogError(
-          err instanceof Error ? err.message : "Failed to load achievements"
+        setHistoryDayError(
+          err instanceof Error ? err.message : "Failed to load that day"
         );
       } finally {
-        setAchievementCatalogLoading(false);
+        setHistoryDayLoading(false);
       }
     },
-    [
-      isAuthenticated,
-      isConfigured,
-      achievementCatalogLoading,
-      achievementCatalog,
-      request,
-    ]
+    [request]
   );
 
-  const openAchievementsPage = useCallback(() => {
-    setActiveTab("achievements");
-    void loadAchievementCatalog(false);
-  }, [loadAchievementCatalog]);
-
-  const loadEconomy = useCallback(
-    async (silent = false) => {
-      if (!isAuthenticated || !isConfigured) return;
-
-      if (!silent) {
-        setShopLoading(true);
-      }
-      setShopError(null);
-
-      try {
-        const [walletPayload, shopPayload] = await Promise.all([
-          request<WalletResponse>("/wallet"),
-          request<ShopCatalogResponse>("/shop/skins"),
-        ]);
-        setWallet(walletPayload);
-        setShopCatalog(shopPayload);
-      } catch (err) {
-        setShopError(
-          err instanceof Error ? err.message : "Failed to load shop"
-        );
-      } finally {
-        if (!silent) {
-          setShopLoading(false);
-        }
-      }
-    },
-    [isAuthenticated, isConfigured, request]
-  );
-
-  useEffect(() => {
-    if (!isConfigured || !isAuthenticated) return;
-    void loadEconomy(true);
-  }, [isConfigured, isAuthenticated, loadEconomy]);
-
-  useEffect(() => {
-    if (isConfigured && isAuthenticated) return;
-    setWallet(null);
-    setShopCatalog(null);
-    setShopError(null);
-    setShopPendingSkinId(null);
-  }, [isConfigured, isAuthenticated]);
-
-  const handlePurchaseSkin = useCallback(
-    async (skinId: SkinId) => {
-      setShopPendingSkinId(skinId);
-      try {
-        const payload = await request<ShopCatalogResponse>(
-          `/shop/skins/${encodeURIComponent(skinId)}/purchase`,
-          { method: "POST" }
-        );
-        setShopCatalog(payload);
-        setError(null);
-        setShopError(null);
-        await loadEconomy(true);
-        await loadStats({ silent: true, includeWeekly: shouldIncludeWeekly });
-      } catch (err) {
-        setShopError(err instanceof Error ? err.message : "Purchase failed");
-      } finally {
-        setShopPendingSkinId(null);
-      }
-    },
-    [loadEconomy, loadStats, request, shouldIncludeWeekly]
-  );
-
-  const handleEquipSkin = useCallback(
-    async (skinId: SkinId) => {
-      setShopPendingSkinId(skinId);
-      try {
-        const payload = await request<ShopCatalogResponse>(
-          `/shop/skins/${encodeURIComponent(skinId)}/equip`,
-          { method: "POST" }
-        );
-        setShopCatalog(payload);
-        setError(null);
-        setShopError(null);
-        await loadEconomy(true);
-        await loadStats({ silent: true, includeWeekly: shouldIncludeWeekly });
-      } catch (err) {
-        setShopError(err instanceof Error ? err.message : "Equip failed");
-      } finally {
-        setShopPendingSkinId(null);
-      }
-    },
-    [loadEconomy, loadStats, request, shouldIncludeWeekly]
-  );
-
-  const fetchUserAchievements = useCallback(
-    async (username: string, force = false) => {
-      const normalized = username.trim().toLowerCase();
-      if (!normalized) return;
-
-      const existing = userAchievements[normalized];
-      if (!force && (existing?.loading || existing?.data)) return;
-
-      setUserAchievements((prev) => ({
-        ...prev,
-        [normalized]: {
-          loading: true,
-          data: prev[normalized]?.data ?? null,
-          error: null,
-        },
-      }));
-
-      try {
-        const payload = await request<UserAchievementsPayload>(
-          `/achievements/${encodeURIComponent(normalized)}`
-        );
-        setUserAchievements((prev) => ({
-          ...prev,
-          [normalized]: {
-            loading: false,
-            data: payload,
-            error: null,
-          },
-        }));
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to load achievements";
-        setUserAchievements((prev) => ({
-          ...prev,
-          [normalized]: {
-            loading: false,
-            data: prev[normalized]?.data ?? null,
-            error: message,
-          },
-        }));
-      }
-    },
-    [request, userAchievements]
-  );
-
-  const handleRowSelect = useCallback(
-    (username: string) => {
-      const normalized = username.trim().toLowerCase();
-      if (!normalized) return;
-      setHoveredUsername(normalized);
-      void fetchUserAchievements(normalized);
-    },
-    [fetchUserAchievements]
-  );
+  const closeHistoryDay = useCallback(() => {
+    setSelectedHistoryOffset(null);
+    setHistoryDayBoard(null);
+    setHistoryDayError(null);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) return;
-    setHoveredUsername(null);
-    setUserAchievements({});
-    setAchievementCatalog(null);
-    setAchievementCatalogError(null);
-    setAchievementCatalogLoading(false);
-    setWallet(null);
-    setShopCatalog(null);
-    setShopError(null);
-    setShopLoading(false);
-    setShopPendingSkinId(null);
-  }, [isAuthenticated]);
+    closeHistoryDay();
+  }, [isAuthenticated, closeHistoryDay]);
 
   useEffect(() => {
-    if (activeTab === "league") return;
-    setHoveredUsername(null);
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab !== "achievements") return;
-    void loadAchievementCatalog(false);
-  }, [activeTab, loadAchievementCatalog]);
-
-  useEffect(() => {
-    if (activeTab !== "shop") return;
-    void loadEconomy(false);
-  }, [activeTab, loadEconomy]);
-
-  useEffect(() => {
-    if (!hoveredUsername) return;
-
-    const onDocumentMouseDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (achievementsModalRef.current?.contains(target)) return;
-      if (target.closest(".row-item-trigger")) return;
-      setHoveredUsername(null);
-    };
-
-    const onDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setHoveredUsername(null);
-      }
-    };
-
-    document.addEventListener("mousedown", onDocumentMouseDown);
-    document.addEventListener("keydown", onDocumentKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", onDocumentMouseDown);
-      document.removeEventListener("keydown", onDocumentKeyDown);
-    };
-  }, [hoveredUsername]);
+    if (activeTab === "history") return;
+    closeHistoryDay();
+  }, [activeTab, closeHistoryDay]);
 
   useEffect(() => {
     if (!config || competitionState === null) return;
@@ -1717,31 +1410,10 @@ const App = () => {
     activeSelfEntry,
     activeInsertIndex,
   ]);
-  const hoveredAchievementsState = hoveredUsername
-    ? userAchievements[hoveredUsername] ?? {
-        loading: true,
-        data: null,
-        error: null,
-      }
-    : null;
-  const showHoverModal =
-    Boolean(hoveredUsername) && activeTab === "league" && !showMainLoading;
   const normalizedUsernameInput = usernameInput.trim().toLowerCase();
   const canUpdateUsername =
     Boolean(normalizedUsernameInput) &&
     normalizedUsernameInput !== (config?.wakawarsUsername ?? "");
-  const achievementCatalogEntries = useMemo(() => {
-    const entries = achievementCatalog?.achievements ?? [];
-    return [...entries].sort((a, b) => {
-      if (a.unlocked !== b.unlocked) {
-        return a.unlocked ? -1 : 1;
-      }
-      if (a.count !== b.count) {
-        return b.count - a.count;
-      }
-      return a.title.localeCompare(b.title);
-    });
-  }, [achievementCatalog?.achievements]);
 
   useEffect(() => {
     if (!window.molty?.setTrayTitle) return;
@@ -1754,15 +1426,11 @@ const App = () => {
   const showSignIn = showAuth && authView === "signin";
   const showSignUp = showAuth && authView === "signup";
   const canShowControlTabs = Boolean(isConfigured && isAuthenticated);
-  const showShop = Boolean(canShowControlTabs && activeTab === "shop");
-  const showAchievements = Boolean(
-    canShowControlTabs && activeTab === "achievements"
-  );
   const showSettings = Boolean(canShowControlTabs && activeTab === "settings");
+  const showHistory = Boolean(canShowControlTabs && activeTab === "history");
   const passwordActionLabel = "Set password";
   const headerSubtitle = useMemo(() => {
-    if (showShop) return "Skin market";
-    if (showAchievements) return "Trophy vault";
+    if (showHistory) return "Battle archive";
     if (showSettings) return "War room";
     if (showAuth) {
       if (authView === "signin") return "Sign in";
@@ -1770,12 +1438,11 @@ const App = () => {
       return "Welcome";
     }
     return activeLeagueTab === "weekly" ? "Weekly clash" : "Daily arena";
-  }, [showShop, showAchievements, showSettings, showAuth, authView, activeLeagueTab]);
+  }, [showHistory, showSettings, showAuth, authView, activeLeagueTab]);
   const showHomeButton = Boolean(
-    canShowControlTabs && (showSettings || showAchievements || showShop)
+    canShowControlTabs && (showSettings || showHistory)
   );
   const canRefresh = Boolean(canShowControlTabs && activeTab === "league");
-  const coinBalance = wallet?.coins ?? shopCatalog?.coins ?? 0;
   const updateLabel = latestVersion ? `Update v${latestVersion}` : "Update";
   const updateButton = updateAvailable ? (
     <Button
@@ -1890,8 +1557,7 @@ const App = () => {
       isConfigured &&
       isAuthenticated &&
       !showSettings &&
-      !showAchievements &&
-      !showShop
+      !showHistory
   );
   const appClassName = [
     "app",
@@ -1938,6 +1604,19 @@ const App = () => {
                   <HomeHeaderIcon />
                 </Button>
               )}
+              {canShowControlTabs && config && activeTab === "league" && (
+                <Button
+                  type="button"
+                  className={`icon-button ghost-button competition-door ${
+                    isCompeting ? "leaving" : "joining"
+                  }`}
+                  onClick={handleCompetitionToggle}
+                  title={competitionButtonLabel}
+                  aria-label={competitionButtonLabel}
+                >
+                  <CompetitionFlagIcon competing={isCompeting} />
+                </Button>
+              )}
               {!showHomeButton && canRefresh && (
                 <Button
                   type="button"
@@ -1946,33 +1625,24 @@ const App = () => {
                   disabled={refreshing || loading}
                   aria-label={refreshing ? "Refreshing stats" : "Refresh stats"}
                 >
-                  ↻
+                  <RefreshHeaderIcon />
                 </Button>
               )}
               {canShowControlTabs && (
                 <Button
                   type="button"
                   className={`icon-button ghost-button ${
-                    activeTab === "shop" ? "active" : ""
+                    activeTab === "history" ? "active" : ""
                   }`}
-                  onClick={() => setActiveTab("shop")}
-                  aria-label="Shop"
-                  title="Open shop"
+                  onClick={() =>
+                    setActiveTab((prev) =>
+                      prev === "history" ? "league" : "history"
+                    )
+                  }
+                  aria-label="Previous days"
+                  title="Previous days"
                 >
-                  <ShopHeaderIcon />
-                </Button>
-              )}
-              {canShowControlTabs && (
-                <Button
-                  type="button"
-                  className={`icon-button ghost-button ${
-                    activeTab === "achievements" ? "active" : ""
-                  }`}
-                  onClick={openAchievementsPage}
-                  aria-label="Achievements"
-                  title="Open achievements"
-                >
-                  <AchievementHeaderIcon />
+                  <HistoryHeaderIcon />
                 </Button>
               )}
               {canShowControlTabs && (
@@ -1988,7 +1658,7 @@ const App = () => {
                   }
                   aria-label="Settings"
                 >
-                  ⚙︎
+                  <SettingsGearIcon />
                 </Button>
               )}
             </div>
@@ -2207,209 +1877,105 @@ const App = () => {
           </div>
         </Panel>
           </View>
-        ) : showAchievements ? (
-          <View viewKey="achievements">
-        <Panel className="achievement-page">
+        ) : showHistory ? (
+          <View viewKey="history">
+        <Panel className="history-panel">
           <div className="panel-head">
             <div>
-              <p className="eyebrow">Achievements</p>
-              <h2>Complete trophy list</h2>
+              <p className="eyebrow">History</p>
+              <h2>
+                {selectedHistoryOffset !== null
+                  ? formatHistoryDayLabel(selectedHistoryOffset)
+                  : "Previous days"}
+              </h2>
               <p className="muted">
-                {achievementCatalog
-                  ? `${achievementCatalog.unlockedCount}/${achievementCatalog.totalDefined} unlocked`
-                  : "Loading your progress"}
+                {selectedHistoryOffset !== null
+                  ? "Full leaderboard for that day."
+                  : "Browse the last 14 daily leaderboards."}
               </p>
             </div>
-            <Button
-              type="button"
-              className="ghost tiny"
-              onClick={() => {
-                void loadAchievementCatalog(true);
-              }}
-              disabled={achievementCatalogLoading}
-            >
-              Refresh
-            </Button>
-          </div>
-          {achievementCatalogLoading && !achievementCatalog ? (
-            <div className="loading-shimmer" aria-hidden="true" />
-          ) : achievementCatalogError && !achievementCatalog ? (
-            <div className="error">
-              <span>{achievementCatalogError}</span>
+            {selectedHistoryOffset !== null && (
               <Button
+                type="button"
                 className="ghost tiny"
-                onClick={() => {
-                  void loadAchievementCatalog(true);
-                }}
+                onClick={closeHistoryDay}
               >
-                Retry
+                Back
               </Button>
-            </div>
-          ) : (
-            <>
-              <div className="achievement-summary">
-                {[
-                  {
-                    label: "User",
-                    value: achievementCatalog?.username ?? "-",
-                  },
-                  {
-                    label: "Total unlocks",
-                    value: String(achievementCatalog?.totalUnlocks ?? 0),
-                  },
-                  {
-                    label: "Badges unlocked",
-                    value: `${achievementCatalog?.unlockedCount ?? 0}/${
-                      achievementCatalog?.totalDefined ?? 0
-                    }`,
-                  },
-                ].map((chip, index) => (
-                  <div
-                    key={chip.label}
-                    className="summary-chip"
-                  >
-                    <span className="summary-chip-label">{chip.label}</span>
-                    <span>{chip.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="achievement-catalog-grid">
-                {achievementCatalogEntries.map((achievement, index) => (
-                  <AchievementCatalogCard
-                    key={achievement.id}
-                    achievement={achievement}
-                    sequenceIndex={index}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </Panel>
-          </View>
-        ) : showShop ? (
-          <View viewKey="shop">
-        <Panel className="shop-panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Shop</p>
-              <h2>Skin market</h2>
-              <p className="muted">Buy and equip skins for leaderboard rows.</p>
-            </div>
-            <button
-              type="button"
-              className="ghost tiny"
-              onClick={() => {
-                void loadEconomy(false);
-              }}
-              disabled={shopLoading}
-            >
-              Refresh
-            </button>
+            )}
           </div>
-          {shopLoading && !shopCatalog ? (
-            <div className="loading-shimmer" aria-hidden="true" />
-          ) : shopError && !shopCatalog ? (
-            <div className="error">
-              <span>{shopError}</span>
-              <button
-                className="ghost tiny"
-                onClick={() => {
-                  void loadEconomy(false);
-                }}
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="shop-summary">
-                <div className="summary-chip">
-                  <span className="summary-chip-label">Coins</span>
-                  <span className="coin-inline">
-                    <CoinIcon />
-                    <span>{shopCatalog?.coins ?? wallet?.coins ?? 0}</span>
-                  </span>
-                </div>
-                <div className="summary-chip">
-                  <span className="summary-chip-label">Skins owned</span>
-                  <span>
-                    {shopCatalog?.skins.filter((skin) => skin.owned).length ?? 0}/
-                    {shopCatalog?.skins.length ?? 0}
-                  </span>
-                </div>
-                <div className="summary-chip">
-                  <span className="summary-chip-label">Equipped</span>
-                  <span>{shopCatalog?.equippedSkinId ?? "classic"}</span>
-                </div>
+          {selectedHistoryOffset !== null ? (
+            historyDayLoading && !historyDayBoard ? (
+              <div className="loading-shimmer" aria-hidden="true" />
+            ) : historyDayError && !historyDayBoard ? (
+              <div className="error">
+                <span>{historyDayError}</span>
+                <Button
+                  className="ghost tiny"
+                  onClick={() => void loadHistoryDay(selectedHistoryOffset)}
+                >
+                  Retry
+                </Button>
               </div>
-              <div className="shop-grid">
-                {shopCatalog?.skins.map((skin) => {
-                  const pending = shopPendingSkinId === skin.id;
-                  const canAfford =
-                    (shopCatalog?.coins ?? wallet?.coins ?? 0) >= skin.priceCoins;
-                  const buyDisabled = loading || pending || !canAfford;
-                  const equipDisabled = loading || pending;
-
-                  return (
-                    <article
-                      key={skin.id}
-                      className={`shop-card ${skin.equipped ? "equipped" : ""}`}
-                      data-skin={skin.id}
-                    >
-                      <div className="shop-card-head">
-                        <strong>{skin.name}</strong>
-                        <span className="coin-inline">
-                          <CoinIcon />
-                          <span>{skin.priceCoins}</span>
-                        </span>
-                      </div>
-                      <p className="muted">{skin.description}</p>
-                      <div className="shop-card-actions">
-                        {!skin.owned ? (
-                          <button
-                            type="button"
-                            className={canAfford ? "primary" : "ghost tiny"}
-                            onClick={() => {
-                              void handlePurchaseSkin(skin.id);
-                            }}
-                            disabled={buyDisabled}
-                          >
-                            {canAfford ? "Buy" : "Need coins"}
-                          </button>
-                        ) : skin.equipped ? (
-                          <button type="button" className="ghost tiny" disabled>
-                            Equipped
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="primary"
-                            onClick={() => {
-                              void handleEquipSkin(skin.id);
-                            }}
-                            disabled={equipDisabled}
-                          >
-                            Equip
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-              <div className="shop-actions">
+            ) : historyDayBoard ? (
+              <>
+                <p className="muted history-day-stamp">
+                  {formatDateKey(historyDayBoard.date)}
+                </p>
+                {historyDayBoard.entries.length ? (
+                  <div className="list">
+                    {historyDayBoard.entries.map((entry, index) => (
+                      <LeaderboardRow
+                        key={entry.username}
+                        entry={entry}
+                        isSelf={entry.username === config?.wakawarsUsername}
+                        sequenceIndex={index}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">No ranked entries for this day.</p>
+                )}
+              </>
+            ) : null
+          ) : historyDays.length ? (
+            <div className="history-days">
+              {historyDays.map((day) => (
                 <button
                   type="button"
-                  className="ghost tiny"
-                  onClick={() => {
-                    void handleEquipSkin("classic");
-                  }}
-                  disabled={loading || shopPendingSkinId === "classic"}
+                  className="history-day history-day-button"
+                  key={`${day.offsetDays}-${day.date}`}
+                  onClick={() => void loadHistoryDay(day.offsetDays)}
                 >
-                  Equip classic
+                  <div className="history-day-head">
+                    <span className="history-day-title">
+                      {formatHistoryDayLabel(day.offsetDays)}
+                    </span>
+                    <span className="muted history-day-date">
+                      {formatDateKey(day.date)}
+                    </span>
+                  </div>
+                  {day.podium.length ? (
+                    <div className="mini-list">
+                      {day.podium.map((entry, podiumIndex) => (
+                        <MiniRow
+                          key={`history-${day.date}-${entry.username}`}
+                          entry={entry}
+                          isSelf={entry.username === config?.wakawarsUsername}
+                          sequenceIndex={podiumIndex}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">No ranked entries.</p>
+                  )}
                 </button>
-              </div>
-            </>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">
+              {loading ? "Loading history..." : "No history available yet."}
+            </p>
           )}
         </Panel>
           </View>
@@ -2506,93 +2072,6 @@ const App = () => {
                   </Button>
                 </form>
               </>
-            )}
-          </Panel>
-
-          <Panel className="settings-panel">
-            <div className="panel-head">
-              <div>
-                <p className="eyebrow">Intel</p>
-                <h2>Intel visibility</h2>
-                <p className="muted">Choose who can see your stats.</p>
-              </div>
-            </div>
-            <div className="visibility-grid">
-              {[
-                {
-                  value: "everyone",
-                  title: "Everyone",
-                  description: "Anyone in your leagues can see your stats.",
-                },
-                {
-                  value: "friends",
-                  title: "Friends only",
-                  description: "Only mutual friends or shared groups can view.",
-                },
-                {
-                  value: "no_one",
-                  title: "No one",
-                  description: "Hide stats from everyone else.",
-                },
-              ].map((option, index) => (
-                <label
-                  key={option.value}
-                  className={`visibility-option ${
-                    config?.statsVisibility === option.value ? "active" : ""
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="stats-visibility"
-                    value={option.value}
-                    checked={config?.statsVisibility === option.value}
-                    onChange={() =>
-                      handleVisibilityChange(
-                        option.value as PublicConfig["statsVisibility"]
-                      )
-                    }
-                    disabled={loading}
-                  />
-                  <div className="visibility-copy">
-                    <span className="visibility-title">{option.title}</span>
-                    <span className="muted">{option.description}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="settings-panel">
-            <div className="panel-head">
-              <div>
-                <p className="eyebrow">Rivals</p>
-                <h2>Rival roster</h2>
-                <p className="muted">
-                  {config?.friends.length ?? 0} rivals on deck.
-                </p>
-              </div>
-            </div>
-            {config?.friends.length ? (
-              <div className="settings-list">
-                {config.friends.map((friend, index) => (
-                  <div
-                    className="settings-row"
-                    key={friend.username}
-                  >
-                    <span>{friend.username}</span>
-                    <Button
-                      className="ghost danger tiny"
-                      type="button"
-                      onClick={() => handleRemoveFriend(friend.username)}
-                      disabled={loading}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">No rivals yet. Recruit them below.</p>
             )}
           </Panel>
 
@@ -2707,53 +2186,6 @@ const App = () => {
           <Panel className="settings-panel">
             <div className="panel-head">
               <div>
-                <p className="eyebrow">History</p>
-                <h2>Last 7 daily podiums</h2>
-                <p className="muted">Yesterday to seven days ago.</p>
-              </div>
-            </div>
-            {dailyHistory?.days?.length ? (
-              <div className="history-days">
-                {historyDays.map((day, dayIndex) => (
-                  <div
-                    className="history-day"
-                    key={`${day.offsetDays}-${day.date}`}
-                  >
-                    <div className="history-day-head">
-                      <span className="history-day-title">
-                        {formatHistoryDayLabel(day.offsetDays)}
-                      </span>
-                      <span className="muted history-day-date">
-                        {formatDateKey(day.date)}
-                      </span>
-                    </div>
-                    {day.podium.length ? (
-                      <div className="mini-list">
-                        {day.podium.map((entry, podiumIndex) => (
-                          <MiniRow
-                            key={`history-${day.date}-${entry.username}`}
-                            entry={entry}
-                            isSelf={entry.username === config?.wakawarsUsername}
-                            sequenceIndex={podiumIndex}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="muted">No ranked entries.</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">
-                {loading ? "Loading history..." : "No history available yet."}
-              </p>
-            )}
-          </Panel>
-
-          <Panel className="settings-panel">
-            <div className="panel-head">
-              <div>
                 <p className="eyebrow">Systems</p>
                 <h2>Launch & style</h2>
                 <p className="muted">Control launch behavior and theme.</p>
@@ -2782,14 +2214,6 @@ const App = () => {
                   checked: menuBarRankEnabled,
                   onChange: (checked: boolean) => {
                     setMenuBarRankEnabled(checked);
-                  },
-                  disabled: false,
-                },
-                {
-                  label: "App skins",
-                  checked: appSkinsEnabled,
-                  onChange: (checked: boolean) => {
-                    setAppSkinsEnabled(checked);
                   },
                   disabled: false,
                 },
@@ -2836,19 +2260,6 @@ const App = () => {
               </p>
             )}
           </Panel>
-
-          <AddFriendCard
-            friendInput={friendInput}
-            onFriendInputChange={(value) => {
-              setFriendInput(value);
-              if (addFriendError) {
-                setAddFriendError(null);
-              }
-            }}
-            onSubmit={handleAddFriend}
-            loading={loading}
-            errorMessage={addFriendError}
-          />
         </>
           </View>
         ) : (
@@ -2865,14 +2276,10 @@ const App = () => {
                         : "Daily leaderboard"}
                     </span>
                   </h2>
-                  <span className="meta-pill coin-pill league-coin-pill" title={`${coinBalance} coins`}>
-                    <CoinIcon />
-                    <span>{coinBalance}</span>
-                  </span>
                 </div>
               </div>
               <div className="league-actions">
-                <div className="tab-group">
+                <div className="tab-group full-width">
                   <Button
                     type="button"
                     className={`tab-button ${
@@ -2892,17 +2299,6 @@ const App = () => {
                     Week
                   </Button>
                 </div>
-                {config && (
-                  <Button
-                    type="button"
-                    className={`ghost competition-toggle ${
-                      isCompeting ? "danger" : ""
-                    }`}
-                    onClick={handleCompetitionToggle}
-                  >
-                    {competitionButtonLabel}
-                  </Button>
-                )}
               </div>
             </div>
             {activeStats ? (
@@ -2930,7 +2326,6 @@ const App = () => {
                                 }
                                 isSelf
                                 sequenceIndex={0}
-                                onSelect={handleRowSelect}
                               />
                             ) : (
                               <LeaderboardRow
@@ -2938,7 +2333,6 @@ const App = () => {
                                 entry={displayPinnedEntry as LeaderboardEntry}
                                 isSelf
                                 sequenceIndex={0}
-                                onSelect={handleRowSelect}
                               />
                             ))}
                           {activeLeagueTab === "weekly"
@@ -2950,7 +2344,6 @@ const App = () => {
                                     entry.username === config?.wakawarsUsername
                                   }
                                   sequenceIndex={displayPinnedEntry ? index + 1 : index}
-                                  onSelect={handleRowSelect}
                                 />
                               ))
                             : listEntries.map((entry, index) => (
@@ -2961,7 +2354,6 @@ const App = () => {
                                     entry.username === config?.wakawarsUsername
                                   }
                                   sequenceIndex={displayPinnedEntry ? index + 1 : index}
-                                  onSelect={handleRowSelect}
                                 />
                               ))}
                         </>
@@ -2994,6 +2386,13 @@ const App = () => {
                           <p className="muted">No ranked entries yet.</p>
                         )}
                       </div>
+                      <Button
+                        type="button"
+                        className="ghost history-link"
+                        onClick={() => setActiveTab("history")}
+                      >
+                        View previous leaderboards
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -3006,28 +2405,6 @@ const App = () => {
               </p>
             )}
           </Panel>
-          <>
-            {showHoverModal && (
-              <div
-                className="achievement-hover-backdrop"
-                aria-hidden="true"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  setHoveredUsername(null);
-                }}
-              />
-            )}
-            {showHoverModal && hoveredUsername && hoveredAchievementsState && (
-              <UserAchievementsModal
-                modalRef={achievementsModalRef}
-                username={hoveredAchievementsState.data?.username ?? hoveredUsername}
-                state={hoveredAchievementsState}
-                onRetry={() => {
-                  void fetchUserAchievements(hoveredUsername, true);
-                }}
-              />
-            )}
-          </>
           {showDockedAdd && (
             <AddFriendCard
               docked
@@ -3099,130 +2476,6 @@ const formatHistoryDayLabel = (offsetDays: number): string => {
   return `${offsetDays} days ago`;
 };
 
-const formatAchievementDate = (value: string): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown";
-  }
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
-
-const formatOptionalAchievementDate = (value: string | null): string => {
-  if (!value) return "Not unlocked yet";
-  return formatAchievementDate(value);
-};
-
-const AchievementCatalogCard = ({
-  achievement,
-  sequenceIndex = 0,
-}: {
-  achievement: AchievementCatalogItem;
-  sequenceIndex?: number;
-}) => {
-  const rarity = getAchievementRarity(achievement.id);
-
-  return (
-    <div
-      className={`achievement-catalog-card ${
-        achievement.unlocked ? "unlocked" : "locked"
-      } rarity-${rarity}`}
-      data-rarity={rarity}
-      aria-disabled={!achievement.unlocked}
-    >
-      <div className="achievement-catalog-icon">{achievement.icon}</div>
-      <div className="achievement-catalog-copy">
-        <div className="achievement-catalog-title-row">
-          <span className="achievement-catalog-title">{achievement.title}</span>
-          <span className="achievement-catalog-count">
-            {achievement.count > 0 ? `${achievement.count}x` : "Locked"}
-          </span>
-        </div>
-        <p className="achievement-catalog-desc">{achievement.description}</p>
-        <span className="achievement-catalog-meta">
-          Last unlock: {formatOptionalAchievementDate(achievement.lastAwardedAt)}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-const UserAchievementsModal = ({
-  modalRef,
-  username,
-  state,
-  onRetry,
-}: {
-  modalRef: RefObject<HTMLElement>;
-  username: string;
-  state: { loading: boolean; data: UserAchievementsPayload | null; error: string | null };
-  onRetry: () => void;
-}) => {
-  const achievements = state.data?.achievements ?? [];
-
-  return (
-    <aside
-      ref={modalRef}
-      className="achievement-hover-modal"
-    >
-      <div className="achievement-hover-head">
-        <p className="eyebrow">Achievements</p>
-        <h3>{username}</h3>
-        <span className="muted">
-          Total unlocks: {state.data?.totalUnlocks ?? 0}
-        </span>
-      </div>
-      {state.loading && !state.data ? (
-        <p className="muted">Loading achievements...</p>
-      ) : state.error && !state.data ? (
-        <div className="achievement-hover-error">
-          <p className="muted">{state.error}</p>
-          <Button type="button" className="ghost tiny" onClick={onRetry}>
-            Retry
-          </Button>
-        </div>
-      ) : achievements.length === 0 ? (
-        <p className="muted">No achievements unlocked yet.</p>
-      ) : (
-        <div className="achievement-hover-list">
-          {achievements.map((achievement, index) => {
-            const rarity = getAchievementRarity(achievement.id);
-
-            return (
-              <div
-                key={achievement.id}
-                className={`achievement-hover-item rarity-${rarity}`}
-                data-rarity={rarity}
-              >
-                <div
-                  className="achievement-hover-icon"
-                  title={achievement.description}
-                  aria-label={`${achievement.title}: ${achievement.description}`}
-                >
-                  {achievement.icon}
-                  <span className="achievement-hover-count-badge">
-                    {achievement.count}x
-                  </span>
-                </div>
-                <div className="achievement-hover-copy">
-                  <div className="achievement-hover-title-row">
-                    <span className="achievement-hover-title">
-                      {achievement.title}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </aside>
-  );
-};
-
 const MiniRow = ({
   entry,
   isSelf,
@@ -3254,13 +2507,11 @@ const BaseLeaderboardRow = ({
   isSelf,
   secondary,
   sequenceIndex = 0,
-  onSelect,
 }: {
   entry: RowEntry;
   isSelf: boolean;
   secondary?: string | null;
   sequenceIndex?: number;
-  onSelect?: (username: string) => void;
 }) => {
   const { rankLabel, podiumClass } = rankDisplay(entry.rank ?? null);
   const timeLabel = statusLabel(entry.status, entry.totalSeconds);
@@ -3268,29 +2519,16 @@ const BaseLeaderboardRow = ({
   const subtitle = [entry.honorTitle ?? null, secondary]
     .filter((value): value is string => Boolean(value && value.trim().length > 0))
     .join(" • ");
-  const skinId = entry.equippedSkinId ?? "classic";
-  const handleClick = () => onSelect?.(entry.username);
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!onSelect) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onSelect(entry.username);
-  };
 
   return (
     <div
-      className={`row-item row-item-trigger ${isSelf ? "self" : ""} ${podiumClass} status-${entry.status} skin-${skinId}`}
-      data-skin={skinId}
-      role={onSelect ? "button" : undefined}
-      tabIndex={onSelect ? 0 : undefined}
-      onClick={onSelect ? handleClick : undefined}
-      onKeyDown={handleKeyDown}
+      className={`row-item ${isSelf ? "self" : ""} ${podiumClass} status-${entry.status}`}
     >
       <div className="row-item-left">
         <div className="avatar">{entry.username.slice(0, 1).toUpperCase()}</div>
         <div className="row-content">
           <div className="row-title">
-            <span className="username-trigger">{entry.username}</span>
+            <span className="username">{entry.username}</span>
             {isSelf && <span className="badge">YOU</span>}
           </div>
           {subtitle && (
@@ -3314,19 +2552,16 @@ const LeaderboardRow = ({
   entry,
   isSelf,
   sequenceIndex,
-  onSelect,
 }: {
   entry: LeaderboardEntry;
   isSelf: boolean;
   sequenceIndex?: number;
-  onSelect?: (username: string) => void;
 }) => {
   return (
     <BaseLeaderboardRow
       entry={entry}
       isSelf={isSelf}
       sequenceIndex={sequenceIndex}
-      onSelect={onSelect}
     />
   );
 };
@@ -3335,12 +2570,10 @@ const WeeklyLeaderboardRow = ({
   entry,
   isSelf,
   sequenceIndex,
-  onSelect,
 }: {
   entry: WeeklyLeaderboardEntry;
   isSelf: boolean;
   sequenceIndex?: number;
-  onSelect?: (username: string) => void;
 }) => {
   const averageLabel =
     entry.status === "ok" ? formatDuration(entry.dailyAverageSeconds) : null;
@@ -3351,7 +2584,6 @@ const WeeklyLeaderboardRow = ({
       isSelf={isSelf}
       secondary={averageLabel ? `Avg ${averageLabel}/day` : null}
       sequenceIndex={sequenceIndex}
-      onSelect={onSelect}
     />
   );
 };

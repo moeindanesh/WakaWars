@@ -190,6 +190,19 @@ export type UserRepository = {
     contextKind?: AchievementContextKind;
   }) => Promise<AchievementGrantSummary[]>;
   createProviderLog: (input: ProviderLogRecord) => Promise<void>;
+  deleteProviderLogsOlderThan: (cutoff: Date) => Promise<number>;
+  getAiHonorTitles: (userIds: number[]) => Promise<Map<number, string | null>>;
+  getAiHonorTitleState: (userId: number) => Promise<{
+    title: string | null;
+    signature: string | null;
+    generatedAt: Date | null;
+  } | null>;
+  setAiHonorTitle: (input: {
+    userId: number;
+    title: string;
+    signature: string;
+    generatedAt: Date;
+  }) => Promise<void>;
 };
 
 type PrismaUser = {
@@ -1232,6 +1245,70 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
     });
   };
 
+  const deleteProviderLogsOlderThan = async (cutoff: Date): Promise<number> => {
+    const result = await prisma.ww_provider_log.deleteMany({
+      where: {
+        fetched_at: { lt: cutoff }
+      }
+    });
+    return result.count;
+  };
+
+  const getAiHonorTitles = async (
+    userIds: number[]
+  ): Promise<Map<number, string | null>> => {
+    if (userIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await prisma.ww_user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, ai_honor_title: true }
+    });
+
+    return new Map(rows.map((row) => [row.id, row.ai_honor_title ?? null]));
+  };
+
+  const getAiHonorTitleState = async (userId: number) => {
+    const row = await prisma.ww_user.findUnique({
+      where: { id: userId },
+      select: {
+        ai_honor_title: true,
+        ai_honor_title_signature: true,
+        ai_honor_title_generated_at: true
+      }
+    });
+    if (!row) {
+      return null;
+    }
+    return {
+      title: row.ai_honor_title ?? null,
+      signature: row.ai_honor_title_signature ?? null,
+      generatedAt: row.ai_honor_title_generated_at ?? null
+    };
+  };
+
+  const setAiHonorTitle = async ({
+    userId,
+    title,
+    signature,
+    generatedAt
+  }: {
+    userId: number;
+    title: string;
+    signature: string;
+    generatedAt: Date;
+  }) => {
+    await prisma.ww_user.update({
+      where: { id: userId },
+      data: {
+        ai_honor_title: title,
+        ai_honor_title_signature: signature,
+        ai_honor_title_generated_at: generatedAt
+      }
+    });
+  };
+
   return {
     countUsers,
     listUsers,
@@ -1268,6 +1345,10 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
     grantAchievement,
     listAchievementUnlocks,
     listAchievementGrants,
-    createProviderLog
+    createProviderLog,
+    deleteProviderLogsOlderThan,
+    getAiHonorTitles,
+    getAiHonorTitleState,
+    setAiHonorTitle
   };
 };
