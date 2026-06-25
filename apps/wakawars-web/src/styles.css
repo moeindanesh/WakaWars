@@ -1356,8 +1356,20 @@ h3 {
   background: #ffffff;
 }
 
-.row-item.self[data-skin="classic"] {
+.row-item.self {
   background: rgba(255, 209, 102, 0.18);
+  border-color: rgba(255, 209, 102, 0.7);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 209, 102, 0.22),
+    0 6px 18px rgba(255, 209, 102, 0.18);
+}
+
+:root[data-theme="light"] .row-item.self {
+  background: rgba(246, 168, 0, 0.14);
+  border-color: rgba(246, 168, 0, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(246, 168, 0, 0.2),
+    0 6px 18px rgba(246, 168, 0, 0.16);
 }
 
 .row-item[data-skin="ember"] {
