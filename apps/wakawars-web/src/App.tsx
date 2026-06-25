@@ -2506,17 +2506,19 @@ const BaseLeaderboardRow = ({
   entry,
   isSelf,
   secondary,
+  showHonorTitle = true,
   sequenceIndex = 0,
 }: {
   entry: RowEntry;
   isSelf: boolean;
   secondary?: string | null;
+  showHonorTitle?: boolean;
   sequenceIndex?: number;
 }) => {
   const { rankLabel, podiumClass } = rankDisplay(entry.rank ?? null);
   const timeLabel = statusLabel(entry.status, entry.totalSeconds);
   const timeClass = entry.status === "ok" ? "time" : "time muted status";
-  const subtitle = [entry.honorTitle ?? null, secondary]
+  const subtitle = [showHonorTitle ? entry.honorTitle ?? null : null, secondary]
     .filter((value): value is string => Boolean(value && value.trim().length > 0))
     .join(" • ");
 
@@ -2583,6 +2585,7 @@ const WeeklyLeaderboardRow = ({
       entry={entry}
       isSelf={isSelf}
       secondary={averageLabel ? `Avg ${averageLabel}/day` : null}
+      showHonorTitle={false}
       sequenceIndex={sequenceIndex}
     />
   );
