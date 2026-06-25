@@ -48,7 +48,12 @@ export type PublicConfig = {
   passwordSet: boolean;
 };
 
-export type DailyStatStatus = "ok" | "private" | "not_found" | "error";
+export type DailyStatStatus =
+  | "ok"
+  | "pending"
+  | "private"
+  | "not_found"
+  | "error";
 
 export type DailyStat = {
   username: string; // WakaWars username

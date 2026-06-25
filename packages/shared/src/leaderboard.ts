@@ -2,9 +2,10 @@ import type { DailyStat, DailyStatStatus } from "./types.js";
 
 const statusOrder: Record<DailyStatStatus, number> = {
   ok: 0,
-  private: 1,
-  not_found: 2,
-  error: 3
+  pending: 1,
+  private: 2,
+  not_found: 3,
+  error: 4
 };
 
 export const sortStats = <T extends DailyStat>(stats: T[]): T[] => {

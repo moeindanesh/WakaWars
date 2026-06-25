@@ -282,7 +282,7 @@ export const createServer = ({
           username: user.wakawarsUsername,
           honorTitle,
           totalSeconds: 0,
-          status: "error",          error: "No stats synced yet",
+          status: "pending",          error: null,
         };
       }
 
@@ -1366,7 +1366,7 @@ export const createServer = ({
                 honorTitle,
                 totalSeconds: 0,
                 dailyAverageSeconds: 0,
-                status: "error",                error: "No stats synced yet",
+                status: "pending",                error: null,
               };
             }
 

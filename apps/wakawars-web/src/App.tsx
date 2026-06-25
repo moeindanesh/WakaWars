@@ -2440,6 +2440,9 @@ const statusLabel = (
   if (status === "ok") {
     return formatDuration(totalSeconds);
   }
+  if (status === "pending") {
+    return "—";
+  }
   if (status === "private") {
     return "Private";
   }
