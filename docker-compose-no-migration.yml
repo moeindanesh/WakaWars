@@ -1,0 +1,81 @@
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wakawars}
+      POSTGRES_USER: ${POSTGRES_USER:-wakawars}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:?}
+    volumes:
+      - wakawars-postgres:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PUBLIC_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      SERVICE_URL_API_3000:
+      NODE_ENV: production
+      MODE: PRODUCTION
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wakawars}:${SERVICE_PASSWORD_POSTGRES:?}@database:5432/${POSTGRES_DB:-wakawars}?schema=public
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        if [ -f /tmp/build-env ]; then export $(cat /tmp/build-env | xargs); fi
+        exec bun src/cli.ts
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'bun -e "fetch(''http://127.0.0.1:3000/health'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/wakawars-web/Dockerfile
+      args:
+        VITE_API_BASE: ${WAKAWARS_API_BASE:-https://core.molty.cool/wakawars/v0}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      SERVICE_URL_WEB_80:
+    expose:
+      - "80"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1/version.json >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  wakawars-postgres:
