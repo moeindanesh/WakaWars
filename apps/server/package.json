@@ -10,6 +10,7 @@
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "start": "node dist/cli.js",
+    "titles:update": "tsx src/scripts/update-honor-titles.ts",
     "backfill:achievements": "tsx src/scripts/backfill-achievements.ts",
     "backfill:leaderboard": "tsx src/scripts/backfill-leaderboard.ts",
     "prisma:generate": "prisma generate",

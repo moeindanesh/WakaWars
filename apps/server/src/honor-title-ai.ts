@@ -108,6 +108,11 @@ export type HonorTitleGenerator = {
     userId: number;
     todaySeconds: number;
     todayPayload?: unknown;
+    /**
+     * Bypass the daily-slot and unchanged-signature guards and regenerate now.
+     * Used by the manual title-update script; the scheduled sync leaves it unset.
+     */
+    force?: boolean;
   }) => Promise<void>;
 };
 
@@ -307,6 +312,7 @@ export const createHonorTitleGenerator = ({
     userId,
     todaySeconds,
     todayPayload,
+    force = false,
   }) => {
     try {
       const signal = await buildSignal(userId, todaySeconds, todayPayload);
@@ -315,23 +321,25 @@ export const createHonorTitleGenerator = ({
       }
 
       const state = await store.getAiHonorTitleState(userId);
-
-      // Cap refreshes to three daily slots (03:00 / 12:00 / 20:00 Asia/Tehran):
-      // if a title was already generated during the current slot, leave it until
-      // the next slot. Users with no title yet are still seeded immediately.
-      const slotStart = resolveCurrentSlotStart(now());
-      if (
-        slotStart &&
-        state?.title &&
-        state.generatedAt &&
-        state.generatedAt.getTime() >= slotStart.getTime()
-      ) {
-        return;
-      }
-
       const signature = buildSignature(signal);
-      if (state?.signature === signature && state.title) {
-        return;
+
+      if (!force) {
+        // Cap refreshes to three daily slots (03:00 / 12:00 / 20:00 Asia/Tehran):
+        // if a title was already generated during the current slot, leave it until
+        // the next slot. Users with no title yet are still seeded immediately.
+        const slotStart = resolveCurrentSlotStart(now());
+        if (
+          slotStart &&
+          state?.title &&
+          state.generatedAt &&
+          state.generatedAt.getTime() >= slotStart.getTime()
+        ) {
+          return;
+        }
+
+        if (state?.signature === signature && state.title) {
+          return;
+        }
       }
 
       const title = await requestTitle({
