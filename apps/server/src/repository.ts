@@ -196,12 +196,22 @@ export type UserRepository = {
     title: string | null;
     signature: string | null;
     generatedAt: Date | null;
+    custom: boolean;
   } | null>;
   setAiHonorTitle: (input: {
     userId: number;
     title: string;
     signature: string;
     generatedAt: Date;
+  }) => Promise<void>;
+  /**
+   * Set (or clear) a title the user typed by hand. A non-null title locks the
+   * row against AI regeneration; passing null clears the override and lets the
+   * AI/deterministic title take over again on the next sync.
+   */
+  setCustomHonorTitle: (input: {
+    userId: number;
+    title: string | null;
   }) => Promise<void>;
 };
 
@@ -1275,7 +1285,8 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
       select: {
         ai_honor_title: true,
         ai_honor_title_signature: true,
-        ai_honor_title_generated_at: true
+        ai_honor_title_generated_at: true,
+        ai_honor_title_custom: true
       }
     });
     if (!row) {
@@ -1284,7 +1295,8 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
     return {
       title: row.ai_honor_title ?? null,
       signature: row.ai_honor_title_signature ?? null,
-      generatedAt: row.ai_honor_title_generated_at ?? null
+      generatedAt: row.ai_honor_title_generated_at ?? null,
+      custom: row.ai_honor_title_custom ?? false
     };
   };
 
@@ -1304,8 +1316,38 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
       data: {
         ai_honor_title: title,
         ai_honor_title_signature: signature,
-        ai_honor_title_generated_at: generatedAt
+        ai_honor_title_generated_at: generatedAt,
+        ai_honor_title_custom: false
       }
+    });
+  };
+
+  const setCustomHonorTitle = async ({
+    userId,
+    title
+  }: {
+    userId: number;
+    title: string | null;
+  }) => {
+    const trimmed = title?.trim() ?? "";
+    await prisma.ww_user.update({
+      where: { id: userId },
+      data: trimmed
+        ? {
+            ai_honor_title: trimmed,
+            // No signature/slot tracking for manual titles — the custom flag is
+            // the only gate that matters, and it's cleared by an AI refresh.
+            ai_honor_title_signature: null,
+            ai_honor_title_generated_at: new Date(),
+            ai_honor_title_custom: true
+          }
+        : {
+            // Empty title clears the override so the next sync regenerates one.
+            ai_honor_title: null,
+            ai_honor_title_signature: null,
+            ai_honor_title_generated_at: null,
+            ai_honor_title_custom: false
+          }
     });
   };
 
@@ -1349,6 +1391,7 @@ export const createPrismaRepository = (prisma: PrismaClient): UserRepository => 
     deleteProviderLogsOlderThan,
     getAiHonorTitles,
     getAiHonorTitleState,
-    setAiHonorTitle
+    setAiHonorTitle,
+    setCustomHonorTitle
   };
 };

@@ -20,6 +20,7 @@ model ww_user {
   ai_honor_title              String?
   ai_honor_title_signature    String?
   ai_honor_title_generated_at DateTime?
+  ai_honor_title_custom       Boolean         @default(false)
   equipped_skin     ww_skin_catalog? @relation("equipped_skin", fields: [equipped_skin_id], references: [id], onDelete: SetNull)
   friendships       ww_friendship[] @relation("user_friendships")
   friend_of         ww_friendship[] @relation("friend_friendships")

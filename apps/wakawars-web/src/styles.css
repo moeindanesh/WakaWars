@@ -1689,6 +1689,48 @@ h3 {
   color: var(--muted);
 }
 
+.honor-title-editable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.honor-title-editable:hover,
+.honor-title-editable:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.honor-title-editable.empty {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.honor-title-input {
+  font: inherit;
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin: -2px 0;
+  min-width: 0;
+  width: 16ch;
+  max-width: 100%;
+}
+
+.honor-title-input:focus {
+  outline: none;
+}
+
+.honor-title-input:disabled {
+  opacity: 0.6;
+}
+
 .row-meta {
   display: flex;
   flex-direction: column;

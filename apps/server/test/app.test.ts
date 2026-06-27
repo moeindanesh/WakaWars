@@ -597,7 +597,8 @@ const createMemoryRepository = (): UserRepository => {
     getAiHonorTitles: async (userIds) =>
       new Map(userIds.map((id) => [id, null])),
     getAiHonorTitleState: async () => null,
-    setAiHonorTitle: async () => {}
+    setAiHonorTitle: async () => {},
+    setCustomHonorTitle: async () => {}
   };
 };
 

@@ -11,7 +11,9 @@ import { DEFAULT_WAKATIME_WEEKLY_RANGE } from "./wakatime-weekly-cache.js";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct";
 const REQUEST_TIMEOUT_MS = 8000;
-const MAX_TITLE_LENGTH = 40;
+/** Shared cap for both AI-generated and hand-typed honor titles. */
+export const MAX_HONOR_TITLE_LENGTH = 40;
+const MAX_TITLE_LENGTH = MAX_HONOR_TITLE_LENGTH;
 
 /** Titles are refreshed at most once per slot — three times a day, Tehran time. */
 const TITLE_REFRESH_TIME_ZONE = "Asia/Tehran";
@@ -178,16 +180,22 @@ const requestTitle = async ({
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   const systemPrompt =
-    "You are the snarky title-bard of WakaWars, a coding-time leaderboard. " +
-    "Given a developer's stats and the tools they actually used (languages, " +
-    "editors, projects), crown them with ONE short, dryly sarcastic honor title " +
-    "that roasts their coding habits. Keep it SIMPLE and punchy — 2 to 3 plain " +
-    "words, like 'Vim Hostage', 'Rust Cultist', 'Localhost Hermit', 'Coffee CTO', " +
-    "'Merge Gremlin', 'Idle Legend'. Lean on their tools and hours for the joke. " +
-    "Rules: NEVER use the filler words Chronic, Professional, Perpetual, Enthusiast, " +
-    "Addict, or Master. No corporate buzzwords. Title Case, playful not mean, no " +
-    "quotes, no emoji, no hashtags, no trailing punctuation, no explanation. " +
-    "Return only the title.";
+    "You are the deadpan title-bard of WakaWars, a coding-time leaderboard. " +
+    "From a developer's stats and the tools they actually used (languages, " +
+    "editors, projects), invent ONE honor title that is genuinely clever and " +
+    "cuttingly sarcastic — a sharp, specific roast of their coding habits, not a " +
+    "compliment in disguise. Think dry wit and unexpected pairings: 'Stack " +
+    "Overflow Archaeologist', 'Semicolon Pacifist', 'Compiler's Hostage', 'Git " +
+    "Blame Survivor', 'Tab Key Zealot', 'Production Arsonist', 'Localhost Recluse'. " +
+    "Mine the SPECIFIC tools and hours for the joke — the more particular to this " +
+    "developer, the better. Length: 2 to 4 words. " +
+    "Hard rules: be witty and surprising, never generic, never wholesome or " +
+    "motivational, never a cheesy pun-for-the-sake-of-it. BANNED words (too cheesy " +
+    "or filler): Chronic, Professional, Perpetual, Enthusiast, Addict, Master, " +
+    "Ninja, Wizard, Guru, Rockstar, Legend, Hero, Champion, Warrior, King, Queen, " +
+    "Lord, Sultan, Overlord. No corporate buzzwords. Title Case, playful not " +
+    "cruel, no quotes, no emoji, no hashtags, no trailing punctuation, no " +
+    "explanation. Return only the title.";
 
   const userPrompt = JSON.stringify({
     previousBoringTitle: signal.deterministicTitle,
@@ -322,6 +330,12 @@ export const createHonorTitleGenerator = ({
 
       const state = await store.getAiHonorTitleState(userId);
       const signature = buildSignature(signal);
+
+      // A title the user typed by hand is sacred — never let the scheduled sync
+      // clobber it. The manual `titles:update` script can still force a refresh.
+      if (!force && state?.custom) {
+        return;
+      }
 
       if (!force) {
         // Cap refreshes to three daily slots (03:00 / 12:00 / 20:00 Asia/Tehran):

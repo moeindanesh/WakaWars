@@ -39,7 +39,10 @@ import {
   HONOR_TITLE_ACHIEVEMENT_IDS,
   resolveHonorTitlesByUserId,
 } from "./honor-titles.js";
-import { createHonorTitleGenerator } from "./honor-title-ai.js";
+import {
+  createHonorTitleGenerator,
+  MAX_HONOR_TITLE_LENGTH,
+} from "./honor-title-ai.js";
 import { createProviderLogCleanup } from "./provider-log-cleanup.js";
 
 export type ServerOptions = {
@@ -700,6 +703,37 @@ export const createServer = ({
           {
             body: t.Object({
               isCompeting: t.Boolean(),
+            }),
+          }
+        )
+        .post(
+          "/honor-title",
+          async ({ body, headers, set }) => {
+            const authCheck = await requireSession(headers, set);
+            if (!authCheck.ok) {
+              return { error: "Unauthorized" };
+            }
+
+            // Collapse whitespace, strip wrapping quotes/markdown, and cap the
+            // length so a hand-typed title matches what the AI path produces.
+            const cleaned = body.title
+              .replace(/["'`*_]/g, "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, MAX_HONOR_TITLE_LENGTH)
+              .trim();
+
+            await store.setCustomHonorTitle({
+              userId: authCheck.user.id,
+              title: cleaned || null,
+            });
+
+            const resolved = await resolveHonorTitles([authCheck.user.id]);
+            return { honorTitle: resolved.get(authCheck.user.id) ?? null };
+          },
+          {
+            body: t.Object({
+              title: t.String(),
             }),
           }
         )

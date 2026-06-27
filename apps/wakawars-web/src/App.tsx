@@ -1181,6 +1181,23 @@ const App = () => {
     shouldIncludeWeekly,
   ]);
 
+  const saveHonorTitle = useCallback(
+    async (title: string) => {
+      try {
+        await request<{ honorTitle: string | null }>("/honor-title", {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        });
+        await loadStats({ silent: true, includeWeekly: shouldIncludeWeekly });
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update title");
+        throw err;
+      }
+    },
+    [request, loadStats, shouldIncludeWeekly]
+  );
+
   const loadHistoryDay = useCallback(
     async (offsetDays: number) => {
       setSelectedHistoryOffset(offsetDays);
@@ -2332,6 +2349,7 @@ const App = () => {
                                 key={`self-${displayPinnedEntry.username}`}
                                 entry={displayPinnedEntry as LeaderboardEntry}
                                 isSelf
+                                onSaveHonorTitle={saveHonorTitle}
                                 sequenceIndex={0}
                               />
                             ))}
@@ -2353,6 +2371,7 @@ const App = () => {
                                   isSelf={
                                     entry.username === config?.wakawarsUsername
                                   }
+                                  onSaveHonorTitle={saveHonorTitle}
                                   sequenceIndex={displayPinnedEntry ? index + 1 : index}
                                 />
                               ))}
@@ -2505,23 +2524,115 @@ const MiniRow = ({
   );
 };
 
+const EditableHonorTitle = ({
+  value,
+  onSave,
+}: {
+  value: string | null;
+  onSave: (title: string) => Promise<void>;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value ?? "");
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = async () => {
+    if (saving) return;
+    const next = draft.trim();
+    if (next === (value ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+      setEditing(false);
+    } catch {
+      // Leave the editor open so the user can retry; App shows the error banner.
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="honor-title-input"
+        value={draft}
+        maxLength={40}
+        disabled={saving}
+        placeholder="Your title"
+        aria-label="Edit your honor title"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(value ?? "");
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`honor-title-editable ${value ? "" : "empty"}`}
+      title="Double-click to edit your title"
+      role="button"
+      tabIndex={0}
+      onDoubleClick={() => setEditing(true)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setEditing(true);
+        }
+      }}
+    >
+      {value ?? "Double-click to add a title"}
+    </span>
+  );
+};
+
 const BaseLeaderboardRow = ({
   entry,
   isSelf,
   secondary,
   showHonorTitle = true,
+  onSaveHonorTitle,
   sequenceIndex = 0,
 }: {
   entry: RowEntry;
   isSelf: boolean;
   secondary?: string | null;
   showHonorTitle?: boolean;
+  onSaveHonorTitle?: (title: string) => Promise<void>;
   sequenceIndex?: number;
 }) => {
   const { rankLabel, podiumClass } = rankDisplay(entry.rank ?? null);
   const timeLabel = statusLabel(entry.status, entry.totalSeconds);
   const timeClass = entry.status === "ok" ? "time" : "time muted status";
-  const subtitle = [showHonorTitle ? entry.honorTitle ?? null : null, secondary]
+  const honorTitle = showHonorTitle ? entry.honorTitle ?? null : null;
+  const editableHonorTitle = Boolean(
+    onSaveHonorTitle && isSelf && showHonorTitle
+  );
+  const subtitle = [honorTitle, secondary]
     .filter((value): value is string => Boolean(value && value.trim().length > 0))
     .join(" • ");
 
@@ -2536,10 +2647,22 @@ const BaseLeaderboardRow = ({
             <span className="username">{entry.username}</span>
             {isSelf && <span className="badge">YOU</span>}
           </div>
-          {subtitle && (
+          {editableHonorTitle ? (
             <div className="row-sub">
-              <span>{subtitle}</span>
+              <EditableHonorTitle
+                value={honorTitle}
+                onSave={onSaveHonorTitle!}
+              />
+              {secondary && secondary.trim().length > 0 && (
+                <span> • {secondary}</span>
+              )}
             </div>
+          ) : (
+            subtitle && (
+              <div className="row-sub">
+                <span>{subtitle}</span>
+              </div>
+            )
           )}
         </div>
       </div>
@@ -2556,16 +2679,19 @@ const BaseLeaderboardRow = ({
 const LeaderboardRow = ({
   entry,
   isSelf,
+  onSaveHonorTitle,
   sequenceIndex,
 }: {
   entry: LeaderboardEntry;
   isSelf: boolean;
+  onSaveHonorTitle?: (title: string) => Promise<void>;
   sequenceIndex?: number;
 }) => {
   return (
     <BaseLeaderboardRow
       entry={entry}
       isSelf={isSelf}
+      onSaveHonorTitle={onSaveHonorTitle}
       sequenceIndex={sequenceIndex}
     />
   );

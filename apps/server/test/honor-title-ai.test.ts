@@ -131,6 +131,7 @@ describe("createHonorTitleGenerator", () => {
     title: string | null;
     signature: string | null;
     generatedAt: Date | null;
+    custom?: boolean;
   }) => {
     const sets: unknown[] = [];
     const store = {
@@ -190,6 +191,61 @@ describe("createHonorTitleGenerator", () => {
     });
 
     await generator?.maybeGenerate({ userId: 1, todaySeconds: 3600 });
+    expect(sets).toHaveLength(1);
+  });
+
+  it("never overwrites a hand-typed (custom) title on the scheduled sync", async () => {
+    const { store, sets } = makeStore({
+      title: "My Own Title",
+      signature: null,
+      // generated yesterday — a new slot is open, but the title is custom
+      generatedAt: new Date("2026-06-25T09:30:00Z"),
+      custom: true,
+    });
+    let fetched = false;
+    const generator = createHonorTitleGenerator({
+      store,
+      apiKey: "key",
+      fetcher: (async () => {
+        fetched = true;
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Robot Title" } }],
+          })
+        );
+      }) as never,
+      now: () => new Date("2026-06-26T17:30:00Z"), // 21:00 Tehran, 20:00 slot open
+    });
+
+    await generator?.maybeGenerate({ userId: 1, todaySeconds: 3600 });
+    expect(fetched).toBe(false);
+    expect(sets).toHaveLength(0);
+  });
+
+  it("regenerates over a custom title when forced", async () => {
+    const { store, sets } = makeStore({
+      title: "My Own Title",
+      signature: null,
+      generatedAt: new Date("2026-06-25T09:30:00Z"),
+      custom: true,
+    });
+    const generator = createHonorTitleGenerator({
+      store,
+      apiKey: "key",
+      fetcher: (async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Robot Title" } }],
+          })
+        )) as never,
+      now: () => new Date("2026-06-26T17:30:00Z"),
+    });
+
+    await generator?.maybeGenerate({
+      userId: 1,
+      todaySeconds: 3600,
+      force: true,
+    });
     expect(sets).toHaveLength(1);
   });
 });
