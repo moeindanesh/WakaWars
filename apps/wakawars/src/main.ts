@@ -6,6 +6,7 @@ import electronUpdater from "electron-updater";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSpotifySharing } from "./spotify.js";
 
 const {
   app,
@@ -16,6 +17,8 @@ const {
   nativeImage,
   screen,
   nativeTheme,
+  shell,
+  powerMonitor,
 } = electron;
 const { autoUpdater } = electronUpdater;
 
@@ -39,6 +42,11 @@ const rendererURL =
   isDev && process.env.VITE_DEV_SERVER_URL
     ? process.env.VITE_DEV_SERVER_URL
     : "https://wakawars.molty.cool";
+let spotify: ReturnType<typeof createSpotifySharing> | null = null;
+const trustedRenderer = (event: Electron.IpcMainInvokeEvent) => {
+  if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow?.webContents.mainFrame ||
+      new URL(event.senderFrame.url).origin !== new URL(rendererURL).origin) throw new Error("Untrusted renderer");
+};
 const isMacOS13OrNewer =
   process.platform === "darwin"
     ? (() => {
@@ -92,13 +100,14 @@ const createWindow = () => {
     : path.join(__dirname, "..", "src", "preload.cjs");
 
   mainWindow = new BrowserWindow({
-    width: 360,
-    height: 520,
+    width: 420,
+    height: 640,
     show: false,
     frame: false,
     resizable: false,
-    transparent: false,
-    backgroundColor: "#0a0f17",
+    transparent: process.platform === "darwin",
+    backgroundColor: process.platform === "darwin" ? "#00000000" : "#242426",
+    ...(process.platform === "darwin" ? { vibrancy: "popover" as const, visualEffectState: "active" as const } : {}),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -107,6 +116,15 @@ const createWindow = () => {
   });
 
   mainWindow.loadURL(rendererURL);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Spotify links open in the system browser, never a Node-capable window.
+    if (/^https:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]{22}$/.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (new URL(url).origin !== new URL(rendererURL).origin) event.preventDefault();
+  });
+  mainWindow.on("hide", () => mainWindow?.webContents.send("wakawars:visibility", false));
 
   mainWindow.on("blur", () => {
     if (!mainWindow?.webContents.isDevToolsOpened()) {
@@ -116,6 +134,7 @@ const createWindow = () => {
   mainWindow.on("show", () => {
     if (!mainWindow) return;
     const sendOpened = () => {
+      mainWindow?.webContents.send("wakawars:visibility", true);
       mainWindow?.webContents.send("wakawars:window-opened");
     };
 
@@ -203,6 +222,17 @@ const resolveApiBaseReady = () => {
 };
 
 ipcMain.handle("get-api-base", () => apiBaseReady);
+ipcMain.handle("spotify:configure", (event, token: unknown) => {
+  trustedRenderer(event);
+  if (token !== null && (typeof token !== "string" || token.length > 1024)) throw new Error("Invalid session");
+  return spotify?.configure(token as string | null);
+});
+ipcMain.handle("spotify:state", (event) => { trustedRenderer(event); return spotify?.getState(); });
+ipcMain.handle("spotify:enable", (event, enabled: unknown) => {
+  trustedRenderer(event);
+  if (typeof enabled !== "boolean") throw new Error("Invalid preference");
+  return spotify?.setEnabled(enabled);
+});
 const getLoginItemSettings = () => {
   if (process.platform === "darwin" && isMacOS13OrNewer) {
     return app.getLoginItemSettings({ type: "mainAppService" });
@@ -250,12 +280,15 @@ ipcMain.handle("check-for-updates", async () => {
 
 app.whenReady().then(async () => {
   app.setName("WakaWars");
+  spotify = createSpotifySharing(apiBase, path.join(app.getPath("userData"), "spotify-sharing.json"));
+  powerMonitor.on("suspend", () => void spotify?.suspend());
+  powerMonitor.on("resume", () => spotify?.resume());
   resolveApiBaseReady();
   createWindow();
   createTray();
   setupAutoUpdates();
   if (process.platform === "darwin") {
-    app.dock.hide();
+    app.dock?.hide();
   }
 });
 
@@ -264,6 +297,7 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+app.on("before-quit", () => spotify?.stop());
 
 app.on("activate", () => {
   if (!mainWindow) {

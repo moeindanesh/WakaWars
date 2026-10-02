@@ -2291,3 +2291,45 @@ describe("server app", () => {
     expect(moEntry?.totalSeconds).toBe(7777);
   });
 });
+
+describe("activity and social privacy", () => {
+  it("protects profiles, validates music and shares only with mutual friends", async () => {
+    let providerCalls = 0;
+    const { app, store } = createServer({ port: 0, repository: createMemoryRepository(), enableStatusSync: false,
+      fetcher: (async () => { providerCalls++; return new Response(JSON.stringify({ data: [] }), { headers: { "content-type": "application/json" } }); }) as typeof fetch });
+    const create = async (name: string) => {
+      const res = await app.handle(new Request("http://localhost/wakawars/v0/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wakawarsUsername: name, apiKey: "test" }) }));
+      return (await getSessionId(res)).sessionId!;
+    };
+    const alice = await create("alice"); const bob = await create("bob"); const eve = await create("eve");
+    const a = (await store.getUserByUsername("alice"))!; const b = (await store.getUserByUsername("bob"))!;
+    const call = (token: string | null, path: string, body?: unknown) => app.handle(new Request(`http://localhost/wakawars/v0${path}`, { method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json", ...(token ? { "x-wakawars-session": token } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+    expect((await call(null, "/users/alice/activity")).status).toBe(401);
+    await store.setStatsVisibility(a.id, "no_one");
+    const before = providerCalls;
+    expect((await call(bob, "/users/alice/activity")).status).toBe(403);
+    expect(providerCalls).toBe(before);
+    await store.setStatsVisibility(a.id, "friends");
+    await store.addFriendship(b.id, a.id);
+    expect((await call(bob, "/users/alice/activity")).status).toBe(403);
+    await store.addFriendship(a.id, b.id);
+    expect((await call(bob, "/users/alice/activity?period=week")).status).toBe(200);
+    const track = { title: "Song", artist: "Artist", album: "Album", trackId: "a".repeat(22) };
+    expect((await call(null, "/music", { track })).status).toBe(401);
+    expect((await call(alice, "/music", { track: { ...track, trackId: "javascript:alert(1)" } })).status).toBe(422);
+    expect((await call(alice, "/music", { track })).status).toBe(200);
+    expect((await (await call(bob, "/social")).json()).listening).toHaveLength(1);
+    expect((await (await call(eve, "/social")).json()).listening).toEqual([]);
+    await store.setStatsVisibility(a.id, "no_one");
+    expect((await (await call(bob, "/social")).json()).listening).toEqual([]);
+    expect((await call(bob, "/users/alice/boost", { kind: "fire" })).status).toBe(403);
+    await store.setStatsVisibility(a.id, "friends");
+    expect((await call(bob, "/users/alice/boost", { kind: "fire" })).status).toBe(200);
+    expect((await call(bob, "/users/alice/boost", { kind: "break" })).status).toBe(429);
+    expect((await (await call(alice, "/social")).json()).boosts[0].from).toBe("bob");
+    await call(alice, "/music", { track: null });
+    expect((await (await call(bob, "/social")).json()).listening).toEqual([]);
+    await store.removeFriendship(b.id, a.id);
+    expect((await (await call(alice, "/social")).json()).boosts).toEqual([]);
+  });
+});

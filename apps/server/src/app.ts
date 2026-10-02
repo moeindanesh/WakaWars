@@ -44,6 +44,9 @@ import {
   MAX_HONOR_TITLE_LENGTH,
 } from "./honor-title-ai.js";
 import { createProviderLogCleanup } from "./provider-log-cleanup.js";
+import { createActivityClient } from "./activity.js";
+import { createSocialStore } from "./social.js";
+import type { SocialSnapshot } from "@molty/shared";
 
 export type ServerOptions = {
   port: number;
@@ -121,6 +124,8 @@ export const createServer = ({
   const prisma = repository ? null : createPrismaClient(databaseUrl);
   const store = repository ?? createPrismaRepository(prisma!);
   const wakatime = createWakaTimeClient({ fetcher });
+  const activity = createActivityClient(fetcher);
+  const social = createSocialStore();
   const sessions =
     sessionStore ??
     (prisma ? createPrismaSessionStore(prisma) : createMemorySessionStore());
@@ -1183,6 +1188,67 @@ export const createServer = ({
             }),
           }
         )
+        .get("/users/:username/activity", async ({ params, query, headers, set }) => {
+          set.headers["cache-control"] = "no-store";
+          const auth = await requireSession(headers, set);
+          if (!auth.ok) return { error: "Unauthorized" };
+          const target = await store.getUserByUsername(normalizeUsername(params.username));
+          if (!target) { set.status = 404; return { error: "User not found" }; }
+          if (!await canViewUserStats({ viewer: auth.user, target })) {
+            set.status = 403; return { error: "This activity is private" };
+          }
+          return activity.get({ id: target.id, username: target.wakawarsUsername,
+            apiKey: target.apiKey, timezone: target.wakatimeTimezone, period: query.period ?? "week" });
+        }, { query: t.Object({ period: t.Optional(t.Union([t.Literal("today"), t.Literal("week")])) }) })
+        .post("/music", async ({ headers, body, set }) => {
+          const auth = await requireSession(headers, set);
+          if (!auth.ok) return { error: "Unauthorized" };
+          social.setMusic(auth.user.id, body.track);
+          return { ok: true };
+        }, { body: t.Object({ track: t.Union([t.Null(), t.Object({
+          title: t.String({ minLength: 1, maxLength: 300 }), artist: t.String({ maxLength: 300 }),
+          album: t.String({ maxLength: 300 }), trackId: t.String({ pattern: "^[a-zA-Z0-9]{22}$" }),
+        })]) }) })
+        .get("/social", async ({ headers, set }) => {
+          set.headers["cache-control"] = "no-store";
+          const auth = await requireSession(headers, set);
+          if (!auth.ok) return { error: "Unauthorized" };
+          const peerIds = new Set(await store.getGroupPeerIds(auth.user.id));
+          const friendIds = auth.user.friends.map(friend => friend.id);
+          const incoming = new Set(await store.getIncomingFriendIds(auth.user.id, friendIds));
+          const ids = new Set([auth.user.id, ...peerIds, ...friendIds.filter(id => incoming.has(id))]);
+          const response: SocialSnapshot = { listening: [], boosts: [] };
+          for (const id of ids) {
+            const song = social.getMusic(id);
+            if (!song) continue;
+            const target = await store.getUserById(id);
+            if (target && await canViewUserStats({ viewer: auth.user, target })) {
+              response.listening.push({ username: target.wakawarsUsername, track: song.track, expiresAt: new Date(song.expires).toISOString() });
+            }
+          }
+          for (const boost of social.getBoosts(auth.user.id)) {
+            if (!ids.has(boost.fromId)) continue;
+            const sender = await store.getUserById(boost.fromId);
+            if (sender) response.boosts.push({ id: boost.id, from: sender.wakawarsUsername, kind: boost.kind, createdAt: new Date(boost.at).toISOString() });
+          }
+          return response;
+        })
+        .post("/users/:username/boost", async ({ headers, params, body, set }) => {
+          const auth = await requireSession(headers, set);
+          if (!auth.ok) return { error: "Unauthorized" };
+          const target = await store.getUserByUsername(normalizeUsername(params.username));
+          if (!target) { set.status = 404; return { error: "User not found" }; }
+          const mutual = auth.user.friends.some(friend => friend.id === target.id) &&
+            (await store.getIncomingFriendIds(auth.user.id, [target.id])).includes(target.id);
+          const peer = (await store.getGroupPeerIds(auth.user.id)).includes(target.id);
+          if (target.id === auth.user.id || (!mutual && !peer) || !await canViewUserStats({ viewer: auth.user, target })) {
+            set.status = 403; return { error: "Encouragement is available for mutual friends and squad members" };
+          }
+          const result = social.sendBoost(auth.user.id, target.id, body.kind);
+          if (!result.ok) { set.status = 429; set.headers["retry-after"] = String(result.retryAfter);
+            return { error: "Give your friend a little time. One encouragement every 30 minutes.", retryAfter: result.retryAfter }; }
+          return result;
+        }, { body: t.Object({ kind: t.Union([t.Literal("applause"), t.Literal("fire"), t.Literal("keep_going"), t.Literal("break")]) }) })
         .get("/stats/today", async ({ set, headers }) => {
           const authCheck = await requireSession(headers, set);
           if (!authCheck.ok) {
