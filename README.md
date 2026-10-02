@@ -13,7 +13,12 @@ WakaWars is a local-first coding leaderboard for friends, built as a macOS menu 
 - Supports private/friends/public visibility controls.
 - Shows an AI-generated honor title next to each player (OpenRouter), with a deterministic fallback.
 - Lets you browse previous days' full leaderboards in a History view.
-- Runs as a tray-first app on macOS with auto-update support.
+- Runs as a tray-first app on macOS with auto-update support and a native glass popover.
+- Opens member profiles with daily charts, languages, editors and AI metrics actually reported by WakaTime.
+- Shares the current Spotify desktop song with mutual friends/squad peers, after explicit opt-in on each Mac.
+- Sends lightweight encouragement with a server-enforced 30-minute cooldown.
+
+See [refactor notes](docs/refactor-notes.md) for setup, privacy, API details and validation limits.
 
 > Achievements, coins, and the skin shop remain in the database and on the server
 > but are no longer surfaced in the UI. Achievements are still awarded during sync
@@ -105,6 +110,10 @@ Base path: `/wakawars/v0`
 - `POST /friends`
 - `DELETE /friends/:username`
 - `GET /users/search`
+- `GET /users/:username/activity?period=today|week`
+- `GET /social`
+- `POST /music`
+- `POST /users/:username/boost`
 - `POST /groups`
 - `DELETE /groups/:groupId`
 - `POST /groups/:groupId/members`

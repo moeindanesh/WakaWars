@@ -46,3 +46,7 @@ packages/server/prisma/dev.db-journal
 packages/server/prisma/client
 *.ipa
 release/
+
+# Local visual review artifacts
+.playwright-cli/
+output/playwright/

@@ -21,6 +21,11 @@ import {
   type WeeklyLeaderboardResponse,
 } from "@molty/shared";
 
+import { motion } from "motion/react";
+import { League } from "./components/League";
+import { MusicSettings } from "./components/MusicSettings";
+import { useSocial } from "./hooks/useSocial";
+
 const logoUrl = new URL("./assets/logo.svg", import.meta.url).toString();
 const logoMaskStyle = { "--logo-mask": `url(${logoUrl})` } as CSSProperties;
 const appVersion = __APP_VERSION__;
@@ -115,27 +120,6 @@ const SettingsGearIcon = () => (
   </svg>
 );
 
-const CompetitionFlagIcon = ({ competing }: { competing: boolean }) => (
-  <svg
-    aria-hidden="true"
-    focusable="false"
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M6 21V4" />
-    <path
-      d="M6 4.5h10.5l-2 3.3 2 3.3H6z"
-      fill={competing ? "currentColor" : "none"}
-    />
-  </svg>
-);
-
 type PanelProps = {
   className?: string;
   children: ReactNode;
@@ -158,12 +142,10 @@ type ViewProps = {
 
 const View = ({ viewKey, children }: ViewProps) => {
   return (
-    <div
-      key={viewKey}
-      className="view-stack"
-    >
+    <motion.div key={viewKey} className="view-stack"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: .18 }}>
       {children}
-    </div>
+    </motion.div>
   );
 };
 
@@ -209,9 +191,9 @@ const AddFriendCard = ({
   <Panel className={`add-friend-card ${docked ? "add-friend-dock" : ""}`}>
     <div className="panel-head">
       <div>
-        <p className="eyebrow">Recruit</p>
-        <h2>Draft a rival into your arena</h2>
-        <p className="muted">Use their WakaTime username to sync stats.</p>
+        <p className="eyebrow">Grow your circle</p>
+        <h2>Add a friend</h2>
+        <p className="muted">Add a friend by their WakaWars username.</p>
       </div>
       {dismissible && (
         <Button
@@ -229,11 +211,12 @@ const AddFriendCard = ({
         type="text"
         value={friendInput}
         onChange={(event) => onFriendInputChange(event.target.value)}
-        placeholder="rival-username"
+        aria-label="Friend’s WakaWars username"
+        placeholder="WakaWars username"
         disabled={loading}
       />
       <Button className="primary" type="submit" disabled={loading}>
-        Recruit
+        Add friend
       </Button>
     </form>
     <>
@@ -249,6 +232,7 @@ const AddFriendCard = ({
 );
 
 const App = () => {
+  const [profileOpen, setProfileOpen] = useState(false);
   const [apiBase, setApiBase] = useState<string | null>(null);
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [stats, setStats] = useState<LeaderboardResponse | null>(null);
@@ -307,12 +291,6 @@ const App = () => {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const stored = localStorage.getItem("wakawarsTheme");
     if (stored === "light" || stored === "dark") return stored;
-    const prefersLight = window.matchMedia?.(
-      "(prefers-color-scheme: light)"
-    )?.matches;
-    if (prefersLight) {
-      return "light";
-    }
     return "dark";
   });
   const [menuBarTimeEnabled, setMenuBarTimeEnabled] = useState(() => {
@@ -329,12 +307,6 @@ const App = () => {
     if (stored === "true") return true;
     if (stored === "false") return false;
     return false;
-  });
-  const [appSkinsEnabled, setAppSkinsEnabled] = useState(() => {
-    const stored = localStorage.getItem("wakawarsAppSkins");
-    if (stored === "true") return true;
-    if (stored === "false") return false;
-    return true;
   });
   const [selectedHistoryOffset, setSelectedHistoryOffset] = useState<
     number | null
@@ -401,6 +373,11 @@ const App = () => {
     },
     [apiBase, sessionId]
   );
+
+  const social = useSocial(request, isAuthenticated && isConfigured);
+  useEffect(() => {
+    void window.molty?.configureSpotify?.(isAuthenticated ? sessionId : null).catch(() => {});
+  }, [sessionId, isAuthenticated]);
 
   const checkForUpdates = useCallback(async () => {
     if (typeof window === "undefined") return;
@@ -660,12 +637,6 @@ const App = () => {
     );
   }, [menuBarRankEnabled]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "wakawarsAppSkins",
-      appSkinsEnabled ? "true" : "false"
-    );
-  }, [appSkinsEnabled]);
 
   useEffect(() => {
     checkForUpdates();
@@ -1386,9 +1357,6 @@ const App = () => {
     isCompeting,
   ]);
 
-  const competitionButtonLabel = isCompeting
-    ? "Leave Competition"
-    : "Join Competition";
   const selfPinnedEntry =
     !isCompeting && activeLeagueTab === "weekly"
       ? selfWeeklyEntry
@@ -1398,7 +1366,6 @@ const App = () => {
   const displayPinnedEntry = selfPinnedEntry
     ? { ...selfPinnedEntry, rank: null, deltaSeconds: 0 }
     : null;
-  const hasPinnedEntry = Boolean(selfPinnedEntry);
   const pinnedUsername = selfPinnedEntry?.username ?? null;
   const activeSelfEntry =
     activeLeagueTab === "weekly" ? selfWeeklyEntry : selfDailyEntry;
@@ -1447,14 +1414,14 @@ const App = () => {
   const showHistory = Boolean(canShowControlTabs && activeTab === "history");
   const passwordActionLabel = "Set password";
   const headerSubtitle = useMemo(() => {
-    if (showHistory) return "Battle archive";
-    if (showSettings) return "War room";
+    if (showHistory) return "Your history";
+    if (showSettings) return "Settings";
     if (showAuth) {
       if (authView === "signin") return "Sign in";
       if (authView === "signup") return "Create account";
       return "Welcome";
     }
-    return activeLeagueTab === "weekly" ? "Weekly clash" : "Daily arena";
+    return activeLeagueTab === "weekly" ? "Your week, together" : "Build in good company";
   }, [showHistory, showSettings, showAuth, authView, activeLeagueTab]);
   const showHomeButton = Boolean(
     canShowControlTabs && (showSettings || showHistory)
@@ -1522,7 +1489,7 @@ const App = () => {
             <div>
               <p className="eyebrow">Session</p>
               <h2>Restoring your arena</h2>
-              <p className="muted">Syncing your latest battle stats.</p>
+              <p className="muted">Bringing your circle up to date.</p>
             </div>
           </div>
           <div className="loading-shimmer" aria-hidden="true" />
@@ -1560,7 +1527,7 @@ const App = () => {
             <div>
               <p className="eyebrow">Loading</p>
               <h2>Preparing WakaWars</h2>
-              <p className="muted">Warming up the arena.</p>
+              <p className="muted">Getting your circle ready.</p>
             </div>
           </div>
           <div className="loading-shimmer" aria-hidden="true" />
@@ -1576,13 +1543,7 @@ const App = () => {
       !showSettings &&
       !showHistory
   );
-  const appClassName = [
-    "app",
-    showDockedAdd ? "has-docked-add" : "",
-    appSkinsEnabled ? "skins-enabled" : "skins-disabled",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const appClassName = `app${profileOpen ? " app-profile-open" : ""}`;
 
   return (
     <div className={appClassName}>
@@ -1619,19 +1580,6 @@ const App = () => {
                   title="Back to home"
                 >
                   <HomeHeaderIcon />
-                </Button>
-              )}
-              {canShowControlTabs && config && activeTab === "league" && (
-                <Button
-                  type="button"
-                  className={`icon-button ghost-button competition-door ${
-                    isCompeting ? "leaving" : "joining"
-                  }`}
-                  onClick={handleCompetitionToggle}
-                  title={competitionButtonLabel}
-                  aria-label={competitionButtonLabel}
-                >
-                  <CompetitionFlagIcon competing={isCompeting} />
                 </Button>
               )}
               {!showHomeButton && canRefresh && (
@@ -1711,10 +1659,9 @@ const App = () => {
               <div className="logo-orbit" />
             </div>
             <p className="eyebrow">WAKAWARS</p>
-            <h2>Forge your focus arena</h2>
+            <h2>Build in good company.</h2>
             <p className="muted">
-              Battle friends, win medals, and keep your WakaTime momentum
-              visible.
+              See your friends’ days, share your soundtrack, and cheer each other on.
             </p>
           </div>
           <div className="hero-actions">
@@ -2036,7 +1983,7 @@ const App = () => {
               <div>
                 <p className="eyebrow">Shield</p>
                 <h2>Device shield</h2>
-                <p className="muted">Keep this Mac locked to your squad.</p>
+                <p className="muted">Keep your WakaWars account protected.</p>
               </div>
             </div>
             {session?.passwordSet ? (
@@ -2200,6 +2147,9 @@ const App = () => {
             )}
           </Panel>
 
+          <AddFriendCard friendInput={friendInput} onFriendInputChange={setFriendInput}
+            onSubmit={handleAddFriend} loading={loading} errorMessage={addFriendError} />
+          <MusicSettings sessionId={sessionId} />
           <Panel className="settings-panel">
             <div className="panel-head">
               <div>
@@ -2210,6 +2160,12 @@ const App = () => {
             </div>
             <div className="settings-list">
               {[
+                {
+                  label: "Join leaderboard",
+                  checked: isCompeting,
+                  onChange: () => { void handleCompetitionToggle(); },
+                  disabled: loading,
+                },
                 {
                   label: "Launch at login",
                   checked: Boolean(launchAtLogin),
@@ -2251,6 +2207,7 @@ const App = () => {
                   <label className="toggle">
                     <input
                       type="checkbox"
+                      aria-label={item.label}
                       checked={item.checked}
                       onChange={(event) => item.onChange(event.target.checked)}
                       disabled={item.disabled}
@@ -2282,149 +2239,14 @@ const App = () => {
         ) : (
           <View viewKey="league">
         <>
-          <Panel className="league-panel">
-            <div className="league-header">
-              <div className="league-title">
-                <div className="league-title-row">
-                  <h2>
-                    <span>
-                      {activeLeagueTab === "weekly"
-                        ? "Weekly leaderboard"
-                        : "Daily leaderboard"}
-                    </span>
-                  </h2>
-                </div>
-              </div>
-              <div className="league-actions">
-                <div className="tab-group full-width">
-                  <Button
-                    type="button"
-                    className={`tab-button ${
-                      activeLeagueTab === "today" ? "active" : ""
-                    }`}
-                    onClick={() => setActiveLeagueTab("today")}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    type="button"
-                    className={`tab-button ${
-                      activeLeagueTab === "weekly" ? "active" : ""
-                    }`}
-                    onClick={() => setActiveLeagueTab("weekly")}
-                  >
-                    Week
-                  </Button>
-                </div>
-              </div>
-            </div>
-            {activeStats ? (
-              listEntries.length === 0 && !hasPinnedEntry ? (
-                <div className="empty-state">
-                  <h3>No rivals yet</h3>
-                  <p className="muted">
-                    Recruit rivals to start your first clash.
-                  </p>
-                </div>
-              ) : (
-                <div className="league-content">
-                  <div className="list-section primary">
-                    {listEntries.length === 0 && !hasPinnedEntry ? (
-                      <p className="muted">No rivals yet.</p>
-                    ) : (
-                      <div className="list">
-                        <>
-                          {displayPinnedEntry &&
-                            (activeLeagueTab === "weekly" ? (
-                              <WeeklyLeaderboardRow
-                                key={`self-${displayPinnedEntry.username}`}
-                                entry={
-                                  displayPinnedEntry as WeeklyLeaderboardEntry
-                                }
-                                isSelf
-                                sequenceIndex={0}
-                              />
-                            ) : (
-                              <LeaderboardRow
-                                key={`self-${displayPinnedEntry.username}`}
-                                entry={displayPinnedEntry as LeaderboardEntry}
-                                isSelf
-                                onSaveHonorTitle={saveHonorTitle}
-                                sequenceIndex={0}
-                              />
-                            ))}
-                          {activeLeagueTab === "weekly"
-                            ? listEntries.map((entry, index) => (
-                                <WeeklyLeaderboardRow
-                                  key={entry.username}
-                                  entry={entry as WeeklyLeaderboardEntry}
-                                  isSelf={
-                                    entry.username === config?.wakawarsUsername
-                                  }
-                                  sequenceIndex={displayPinnedEntry ? index + 1 : index}
-                                />
-                              ))
-                            : listEntries.map((entry, index) => (
-                                <LeaderboardRow
-                                  key={entry.username}
-                                  entry={entry as LeaderboardEntry}
-                                  isSelf={
-                                    entry.username === config?.wakawarsUsername
-                                  }
-                                  onSaveHonorTitle={saveHonorTitle}
-                                  sequenceIndex={displayPinnedEntry ? index + 1 : index}
-                                />
-                              ))}
-                        </>
-                      </div>
-                    )}
-                  </div>
-                  <div className="league-grid">
-                    <div className="league-side">
-                      <div
-                        className="subcard podium-card"
-                      >
-                        <div className="subcard-header">
-                          <h3>Yesterday's podium</h3>
-                          <span className="muted">Top 3</span>
-                        </div>
-                        {yesterdayPodium.length ? (
-                          <div className="mini-list">
-                            {yesterdayPodium.map((entry, index) => (
-                              <MiniRow
-                                key={`podium-${entry.username}`}
-                                entry={entry}
-                                isSelf={
-                                  entry.username === config?.wakawarsUsername
-                                }
-                                sequenceIndex={index}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="muted">No ranked entries yet.</p>
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        className="ghost history-link"
-                        onClick={() => setActiveTab("history")}
-                      >
-                        View previous leaderboards
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            ) : (
-              <p className="muted">
-                {activeLeagueTab === "weekly"
-                  ? "No weekly stats yet."
-                  : "No stats yet."}
-              </p>
-            )}
-          </Panel>
-          {showDockedAdd && (
+          <League
+            entries={displayPinnedEntry ? [displayPinnedEntry, ...listEntries] : listEntries}
+            self={activeSelfEntry} username={config?.wakawarsUsername ?? ""}
+            period={activeLeagueTab} onPeriod={setActiveLeagueTab}
+            updatedAt={activeStats?.updatedAt} yesterday={yesterdayPodium}
+            onHistory={() => setActiveTab("history")} request={request}
+            onSaveHonorTitle={saveHonorTitle} social={social} loading={loading} onProfileChange={setProfileOpen}
+            footer={          showDockedAdd && (
             <AddFriendCard
               docked
               dismissible
@@ -2444,6 +2266,8 @@ const App = () => {
               errorMessage={addFriendError}
             />
           )}
+          />
+
         </>
           </View>
         )}
@@ -2692,29 +2516,6 @@ const LeaderboardRow = ({
       entry={entry}
       isSelf={isSelf}
       onSaveHonorTitle={onSaveHonorTitle}
-      sequenceIndex={sequenceIndex}
-    />
-  );
-};
-
-const WeeklyLeaderboardRow = ({
-  entry,
-  isSelf,
-  sequenceIndex,
-}: {
-  entry: WeeklyLeaderboardEntry;
-  isSelf: boolean;
-  sequenceIndex?: number;
-}) => {
-  const averageLabel =
-    entry.status === "ok" ? formatDuration(entry.dailyAverageSeconds) : null;
-
-  return (
-    <BaseLeaderboardRow
-      entry={entry}
-      isSelf={isSelf}
-      secondary={averageLabel ? `Avg ${averageLabel}/day` : null}
-      showHonorTitle={false}
       sequenceIndex={sequenceIndex}
     />
   );
